@@ -1923,7 +1923,7 @@ auto_cluster <- function(df, cor_matrix) {
     
   }
   
-
+#kdhkfdskads
 
 plot_differences <- function(rad_df, cols){
   
@@ -2126,25 +2126,75 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   dbscan_levels <- levels(factor(clusters$dbs_clus))
   
   hca_levels <- levels(factor(clusters$sil_clus))
+  
+  all_required_colors <- length(dbscan_levels) + length(hca_levels)-1
+  
+  extended_palette <- if (all_required_colors > 9) colorRampPalette(brewer.pal(9, "Set1"))(all_required_colors) else brewer.pal(9, "Set1")
+  
+  dbscan_colors <- "grey"
+  
+  dbscan_palette <- c(dbscan_colors, extended_palette[1:(length(dbscan_levels)-1)])
+
+  ann_colors$DBSCAN <- setNames(dbscan_palette, dbscan_levels)
+  
     
   # Use RColorBrewer's Set1 palette for DBSCAN
   ann_colors$DBSCAN <- setNames(brewer.pal(length(dbscan_levels), "Set1"), dbscan_levels)
-  ann_colors$DBSCAN <- setNames(if (length(dbscan_levels) > 9) colorRampPalette(brewer.pal(9, "Set1"))(length(dbscan_levels)) else brewer.pal(length(dbscan_levels), "Set1"), dbscan_levels)
-
+  
   ann_colors$DBSCAN <- ann_colors$DBSCAN[!is.na(names(ann_colors$DBSCAN))]
+  
+  hca_palette <- extended_palette[length(dbscan_levels):all_required_colors]
+  
     
-  # Use the Dark2 palette for HCA Cutree
-  ann_colors$HCA.Cutree <- setNames(brewer.pal(length(hca_levels), "Set2"), hca_levels)
+  # Use the same palette for HCA Cutree
+  ann_colors$HCA.Cutree <- setNames(hca_palette, hca_levels)
   ann_colors$HCA.Cutree <- ann_colors$HCA.Cutree[!is.na(names(ann_colors$HCA.Cutree))]
   
   
-  
+
   if (corr_networks){
+  
     
     corr_network_levels <- levels(factor(clusters$corr_networks))
     
-    ann_colors$Corr_network <- setNames(brewer.pal(length(corr_network_levels), "Set3"), corr_network_levels)
-    ann_colors$Corr_network <- ann_colors$Corr_network[!is.na(names(ann_colors$Corr_network))]
+    all_required_colors <- length(all_required_colors) + length(corr_network_levels)-1
+    
+    
+    extended_palette <- if (all_required_colors > 9) colorRampPalette(brewer.pal(9, "Set1"))(all_required_colors) else brewer.pal(9, "Set1")
+    print(extended_palette)
+    
+    # reset the palettes
+    dbscan_colors <- "grey"
+    
+    dbscan_palette <- c(dbscan_colors, extended_palette[1:(length(dbscan_levels)-1)])
+    
+    print(dbscan_palette)
+    ann_colors$DBSCAN <- setNames(dbscan_palette, dbscan_levels)
+    
+    ann_colors$DBSCAN <- ann_colors$DBSCAN[!is.na(names(ann_colors$DBSCAN))]
+    
+    print((all_required_colors - (length(corr_network_levels) - 1)))
+    
+    print((length(dbscan_levels)):(length(dbscan_levels)+length(hca_levels)-1))
+    
+    hca_palette <- extended_palette[(length(dbscan_levels)):(length(dbscan_levels)+length(hca_levels)-1)]
+    
+    print(hca_palette)
+
+    
+    # Use the same palette for HCA Cutree
+    
+    ann_colors$HCA.Cutree <- setNames(hca_palette, hca_levels)
+    ann_colors$HCA.Cutree <- ann_colors$HCA.Cutree[!is.na(names(ann_colors$HCA.Cutree))]
+    
+    cor_colors <- "black"
+    
+    corr_network_palette <- c(cor_colors, extended_palette[(length(dbscan_levels)+length(hca_levels)-2):all_required_colors])
+    
+    
+    print(corr_network_palette)
+    ann_colors$Corr.Network <- setNames(corr_network_palette, corr_network_levels)
+    ann_colors$Corr.Network <- ann_colors$Corr_network[!is.na(names(ann_colors$Corr_network))]
     
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
     colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
@@ -2589,7 +2639,7 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
       if (ncol(all_reduced_df) < 50) {plot_differences(all_reduced_df, diffs$all_cols)}
       
       write.csv(all_reduced_df, paste(test_effect, "_all_output.csv"))
-      determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
+      #determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
     }
   }
 }
