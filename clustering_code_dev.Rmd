@@ -1,0 +1,3449 @@
+---
+title: "rad_clustering_BAD!!!!"
+author: "Kyle"
+date: "2024-01-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+.libPaths("/g/data/nm24/Overt_pheno_rlibs")
+
+#library(ConsensusClusterPlus)
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(janitor)
+library(viridisLite)
+#library(ggpmisc)
+library(ggplot2)
+library(stringr)
+library(dbscan)
+library(RColorBrewer)
+library(slanter)
+library(broom)
+library(ggforce)
+library(parallel)
+library(pbapply)
+library(data.table)
+library(Rmisc)
+library(pheatmap)
+library(factoextra)
+library(igraph)
+#library(multcomp)
+library(emmeans)
+#library(ResourceSelection)
+library(car)
+library(multcompView)
+library(glmnet)
+library(MuMIn)
+knitr::opts_chunk$set(echo = TRUE)
+library(combinat)
+library(performance)
+library(cluster)
+# gets the position to place the number of positive features (above max point)
+n_fun_pos <- function(x){
+  return(data.frame(y = max(x), label = paste0(length(x))))
+}
+
+# same as above but for negative features
+n_fun_neg <- function(x){
+  return(data.frame(y = min(x), label = paste0(length(x))))
+}
+
+# normalise data but isn't yet used... radiomics_data is already normalised... 
+normalise_2 <- function(x, df, na.rm = FALSE) {
+  res <- x/df$WEV
+  return(res)
+  
+  }
+
+scale_to_mm <- function(x) {
+  um_conv_factor <- 40
+  um_to_mm_conv_factor <- 1e3
+  return((x*um_conv_factor)/um_to_mm_conv_factor)
+}
+
+
+scale_to_mm3 <- function(x) {
+  #voxel size is 40um 
+  um3_conv_factor <- 40.0^3  # To convert voxels to um3
+  um3_to_mm3_conv_factor <- 1e9
+  return((x * um3_conv_factor)/um3_to_mm3_conv_factor)
+}
+
+
+# prepares the data by arranging the variables and getting the genotype, background and WEV columns 
+prep_data <- function(rad_str, staging_str){
+  
+  rad_info <- read_csv(rad_str)
+
+  
+  staging_info <- read_csv(staging_str)
+  
+  rad_info <- merge(rad_info, staging_info[c(1,2,3,4)], by.x = 'vol', by.y = 'vol', all.x = F, all.y=F) %>% dplyr::select(-c(staging,line))
+  
+
+  rad_info <- rad_info %>% remove_constant() %>% mutate_at(vars(contains('WEV')|contains('Volume')), scale_to_mm3) 
+  
+  rad_info <- rad_info %>% remove_constant() %>% mutate_at(vars(contains('Length')), scale_to_mm3) 
+  
+  
+  rad_info <- rad_info %>% dplyr::mutate(dplyr::across(where(is.numeric) & !matches('org') & !matches('WEV'), ~ normalise_2(.x, df = rad_info)))
+  
+  
+  #rad_info$Genotype <- factor(rad_info$Genotype, levels = c("WT", "HET"))
+  
+  #rad_info$Background <- factor(rad_info$Background, levels = c("C3H", "C57BL6"))
+
+  rad_info <- dplyr::arrange(transform(rad_info, Background=ordered(Background,levels=c("C3H","C57BL6"))))
+  
+  rad_info <- dplyr::arrange(transform(rad_info, Genotype=ordered(Genotype,levels=c("WT","HET"))))
+  return(rad_info)
+}
+
+# fixes the column labels and replaces the number with the organ name. 
+fix_column_labels <- function(rad_data){
+  
+  rad_info_colnames <- colnames(rad_data)
+  
+  mapping <- data.frame(label = label_info$label, label_name = label_info$label_name)
+  
+  numbers <- as.numeric(gsub(".*__([0-9]+)$", "\\1", rad_info_colnames))
+  
+  
+  match_indices <- match(numbers, as.integer(mapping$label))
+  for (i in 1:length(rad_info_colnames)) {
+    if (!is.na(match_indices[i])) {
+      rad_info_colnames[i] <- gsub("__[0-9]+$", paste0(" ", mapping$label_name[match_indices[i]]), rad_info_colnames[i])}
+    }
+  
+  rad_info_colnames <- str_replace(rad_info_colnames, " ", "_")
+  
+  colnames(rad_data) <- rad_info_colnames
+  
+  return(rad_data)
+  
+}
+
+# fits a two-way linear model and returns the tvals and pvals from the model
+g_by_e_lm <- function(y, dataset, pair_test=F){
+  if (pair_test){
+    library(mixlm)
+    #Had to transform the data to not get residuals adding to 0? 
+    model <- lm(I(y * 1e8)~Genotype:Background+Genotype+Background+WEV, data=dataset)
+    pair_model <- simple.glht(model,'Background')
+    #print("it's me")
+    pvals <- pair_model$res$'P(>t)'
+    names(pvals) <- rownames(pair_model$res)
+    #gets p and t vals from model
+    #results <- list(pvals=pair_model$res$'P(>t)', tvals=pair_model$res$'t value')
+    detach("package:mixlm", unload=T)
+    library(stats)
+    return(pvals)
+  }
+  else{
+    #dataset$Genotype <- factor(dataset$Genotype, ordered=F)
+    #dataset$Background <- factor
+    #model for stats
+    model <- stats::lm(y~Genotype:Background+Genotype*Background+WEV, data=dataset)
+    #model 
+    
+    results <- pandt_vals(model)
+    pvals <- results$pvals
+    tvals <- results$tvals
+    names(pvals) <- names(model$coefficients)
+    names(tvals) <- names(model$coefficients)
+    list(pvals=pvals, tvals=tvals)
+  }
+}
+
+
+# function to return p and tvals from the model
+pandt_vals <- function(fit) {
+  # so for some reason these are not two dimensional and only 1d
+  
+  # get estimates
+  est <- fit$coefficients[fit$qr$pivot]
+  
+  # get R: see stats:::summary.lm to see how this is calculated
+  p1 <- 1L:(fit$rank)
+  R <- diag(chol2inv(fit$qr$qr[p1, p1, drop = FALSE]))
+  
+  # get residual sum of squares for each
+  resvar <- sum(fit$residuals^2) / fit$df.residual
+  # R is same for each coefficient, resvar is same within each model 
+  se <- sqrt(outer(R, resvar))
+  
+  tvals <- est / se
+  pvals <- pt(abs(est / se), df = fit$df.residual, lower.tail = FALSE) * 2
+  
+  return(list(pvals=pvals, tvals=tvals))
+}
+
+
+# relabel tvals and pvals 
+relabel_df <- function(df, pvals){
+  # Assign row names (coefficient names) from the first element of the list
+  rownames(df) <- names(pvals[[1]]$pvals)
+  # Assign column names using the names of the list elements (sample names)
+  colnames(df) <- names(pvals)
+  return(df)
+}
+
+# used to multiple word organ labels (within a the column) into a single vector
+merge_after_third <- function(vec) {
+  vec[4] <- paste(vec[4:length(vec)], collapse = " ")
+  vec <- vec[1:4]
+  return(vec)
+}
+
+
+create_cluster_df <- function(dataset){
+  
+  if (length(names(dataset) > 0)) {
+    split_names <- strsplit(names(dataset), "_")
+  
+  split_names <- lapply(split_names, function(x) {
+    if ("wavelet" %in% x) {x <- x[c(-1)]}
+    return(x)})
+  
+  split_names <- lapply(split_names, merge_after_third)
+  
+  cluster_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+  
+  
+  colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")}
+  
+  else {
+    cluster_df <- data.frame(matrix(ncol = 4, nrow = 0))
+    colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  }
+  
+  return(cluster_df)
+}
+
+
+combine_rows_to_vector <- function(df) {
+  # Apply the function to each row, pasting the values together
+  combined_column <- apply(df, 1, function(row) str_replace_all(paste(row, collapse = "_")," ", "_"))
+  
+  # Convert to a dataframe
+  #combined_df <- data.frame(Combined = combined_column, stringsAsFactors = FALSE)
+  
+  return(combined_column)
+}
+
+
+pairwise_fisher <- function(table) {
+  # Get unique Org levels
+  org_levels <- unique(table$Org)
+  
+  # Create an empty matrix to store p-values
+  p_matrix <- matrix(NA, nrow = length(org_levels), ncol = length(org_levels),
+                     dimnames = list(org_levels, org_levels))
+  
+  # Loop over all pairs of Org levels
+  for (i in 1:(length(org_levels)-1)) {
+    for (j in (i+1):length(org_levels)) {
+      # Subset the table to include only rows for the current pair of Orgs
+      pair_table <- table %>% filter(Org %in% c(org_levels[i], org_levels[j]))
+      
+      # Aggregate data for contingency table
+      table_summary <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = pair_table, FUN = sum)
+      
+      # Create the contingency table
+      contingency_table <- as.matrix(table_summary[, c("Freq", "Non_Counts")])
+      
+      # Perform Fisher's exact test
+      fisher_test <- fisher.test(contingency_table)
+      
+      # Store the p-value in the matrix
+      p_matrix[i, j] <- fisher_test$p.value
+      p_matrix[j, i] <- fisher_test$p.value  # Fill the symmetric value
+    }
+  }
+  
+  return(p_matrix)
+}
+
+
+
+#USE THIS FUNCTION AND DON'T MESS WITH IT, I DARE YOU TO TRY
+# AND MERGE THE COLUMNS WITHOUT STUPID SHIT HAPPENING
+
+expand_counts_table <- function(counts_table) {
+  # Create an empty dataframe to store expanded rows
+  expanded_table <- data.frame()
+  
+  # Loop over each row in the counts_table
+  for (i in 1:nrow(counts_table)) {
+    row <- counts_table[i, ]
+    
+    # Create rows where Significant = 1 (for Freq count)
+    if (row$Freq > 0) {
+      sig_rows <- data.frame(
+        Filter = rep(row$Filter, row$Freq),
+        Type = rep(row$Type, row$Freq),
+        Org = rep(row$Org, row$Freq),
+        Significant = rep(1, row$Freq)
+      )
+      expanded_table <- rbind(expanded_table, sig_rows)
+    }
+    
+    # Create rows where Significant = 0 (for Non_Counts count)
+    non_sig_count <- row$Total - row$Freq
+    if (non_sig_count > 0) {
+      non_sig_rows <- data.frame(
+        Filter = rep(row$Filter, non_sig_count),
+        Type = rep(row$Type, non_sig_count),
+        Org = rep(row$Org, non_sig_count),
+        Significant = rep(0, non_sig_count)
+      )
+      expanded_table <- rbind(expanded_table, non_sig_rows)
+    }
+  }
+  
+  return(expanded_table)
+}
+
+variable_names <- list(
+  "WT" = expression(bolditalic("Zic2")^bolditalic("+/+")),
+  "HET" = expression(bolditalic("Zic2")^bolditalic("Ku/+"))
+)
+
+variable_labeller <- function(variable,value){return(variable_names[value])}
+
+back_names <- list(
+  "C3H" = "C3H/HeH",
+  "C57BL6" = "C57BL/6N"
+)
+
+back_labeller <- function(variable,value){return(back_names[value])}
+
+
+
+back_names_v2 <- list(
+  "C3H" = "C3H/HeH",
+  "F1"= "C3H/HeH:C57BL6/N F1",
+  "C57BL6" = "C57BL/6N"
+)
+
+back_labeller_v2 <- function(variable,value){return(back_names_v2[value])}
+
+
+#This is the only way to call to make it work!
+inter_names <- list(
+  "WT.C3H" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C3H/HeH")),
+  "WT.C57BL6" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C57BL6/N")),
+  "HET.C3H" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C3H/HeH")),
+  "HET.C57BL6" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C57BL6/N")) 
+  
+)
+
+inter_names_v2 <- list(
+  "C3H.WT" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C3H/HeH")),
+  "C57BL6.WT" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C57BL/6N")),
+  "C3H.HET" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C3H/HeH")),
+  "C57BL6.HET" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C57BL//6N")) 
+  
+)
+
+
+inter_names_v3 <- list(
+  "C3HHEH.WT" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C3H/HeH")),
+  "C57BL6N.WT" = expression(bolditalic("Zic2")^bolditalic("+/+")~bold("C57BL/6N")),
+  "C3HHEH.HET" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C3H/HeH")),
+  "C57BL6N.HET" = expression(bolditalic("Zic2")^bolditalic("Ku/+")~bold("C57BL/6N")) 
+  
+)
+
+inter_labeller <- function(variable,value){return(inter_names[value])}
+
+
+
+shapviz.catboost.Model <- function(object, X_pred, X = X_pred, collapse = NULL, ...) {
+  if (!inherits(X_pred, "catboost.Pool")) {
+    X_pred <- catboost.load_pool(X_pred)
+  }
+  S <- catboost.get_feature_importance(object, X_pred, type = "ShapValues", ...)
+  pp <- ncol(X_pred) + 1
+  baseline <- S[1, pp]
+  S <- S[, -pp, drop = FALSE]
+  colnames(S) <- colnames(X_pred)
+  shapviz(S, X = X, baseline = baseline, collapse = collapse)
+}
+
+
+```
+
+## R Markdown
+
+# Data Prep
+
+```{r cars}
+
+# load label information
+label_info <- read_csv("E14_5_atlas_v24_43_label_info_v5.csv")
+
+# load data for primary and secondary (v2) dataset
+#rad_info <- prep_data("radiomics_data.csv", "240708_full_staging.csv")
+
+
+rad_info <- prep_data("training_data.csv", "240708_full_staging.csv")
+
+rad_info <- rad_info[,-2]
+
+#I need the C3Hs from the primary dataset. 
+
+C3Hs <- rad_info %>% filter(Background=="C3H")
+
+# cohort 3 for secondary data validation
+#rad_info_v2 <- prep_data("radiomics_data_cohort_3.csv", "240708_full_staging.csv")
+
+rad_info_v2 <- prep_data("test_data.csv", "240708_full_staging.csv")
+
+rad_info_v2 <- rad_info_v2[,-2]
+
+# Identify the common columns between the two datasets
+common_cols <- intersect(names(rad_info_v2), names(C3Hs))
+
+
+rad_info <- rad_info %>% dplyr::select(common_cols)
+
+#rad_info_v3 <- bind_rows(
+#  dplyr::select(rad_info_v2, common_cols),
+#  dplyr::select(rad_info, common_cols)
+#) %>%  dplyr::filter(!(vol %in% c('231007_C3H_Ku146_e3_wt', '231106_B6_Ku_88_e1_het')))
+
+# Select only the common columns from both datasets and bind rows
+rad_info_v2 <- bind_rows(
+  dplyr::select(rad_info_v2, common_cols),
+  dplyr::select(C3Hs, common_cols)
+) %>%  dplyr::filter(!(vol %in% c('231007_C3H_Ku146_e3_wt', '231106_B6_Ku_88_e1_het')))
+
+
+rad_info <- fix_column_labels(rad_info) %>% select(where(~ !any(is.na(.))))
+
+print(rad_info)
+  
+rad_info <- rad_info[, !(!(str_detect(colnames(rad_info), "shape")) & 
+                          str_detect(colnames(rad_info), "ventricle|cavity|vesicle"))]
+  
+print(rad_info)
+  
+
+rad_info_v2 <- fix_column_labels(rad_info_v2) %>% select(where(~ !any(is.na(.))))
+
+
+#rad_info_v3 <- fix_column_labels(rad_info_v3)
+
+```
+## Full penetrance plotting for genotype, background and interaction effects
+```{r}
+
+# NOTE, this data is reproducible but heavy on memory - be careful using this function
+end_col <- ncol(rad_info)-5
+
+# Determine the number of cores to use
+num_cores <- detectCores()/2 - 8  # Use one less than the total number of cores
+
+# Run the function in parallel using pblapply
+g_by_e_pvals <- pblapply(rad_info[, 2:end_col], function(data) {
+  g_by_e_lm(data, rad_info, pair_test = F)
+}, cl = num_cores)
+
+
+#split_into_chunks <- function(df, chunk_size) {
+#  split(seq_len(ncol(df)), ceiling(seq_along(seq_len(ncol(df))) / chunk_size))
+#}
+
+# Number of columns to process at once (adjust chunk_size based on memory limits)
+#chunk_size <- 50 # You can adjust this based on your memory constraints
+
+# Split the rad_info dataframe into chunks
+#chunks <- split_into_chunks(rad_info[, 2:end_col], chunk_size)
+
+# Initialize an empty list to store results
+#g_by_e_pvals_list <- list()
+
+# Process each chunk using pblapply
+#for (i in seq_along(chunks)) {
+#  chunk <- rad_info[, chunks[[i]], drop = FALSE]
+  
+  # Apply the g_by_e_lm function to the chunk
+#  g_by_e_pvals_chunk <- pblapply(chunk, function(data) {
+#    g_by_e_lm(data, rad_info, pair_test = F)
+#  }, cl = num_cores)
+  
+  # Store the result
+#  g_by_e_pvals_list[[i]] <- g_by_e_pvals_chunk
+#}
+
+#g_by_e_pvals <- do.call(c, g_by_e_pvals_list)
+
+
+g_by_e_pvals_df <- do.call(cbind, lapply(g_by_e_pvals, function(mat) {
+  mat$pvals
+}))
+
+g_by_e_tvals_df <- do.call(cbind, lapply(g_by_e_pvals, function(mat) {
+  mat$tvals
+}))
+
+
+
+g_by_e_pvals_df  <- relabel_df(g_by_e_pvals_df, g_by_e_pvals)
+
+g_by_e_tvals_df  <- relabel_df(g_by_e_tvals_df, g_by_e_pvals)
+
+
+
+fwrite(g_by_e_pvals_df, "g_by_e_pvals_df.csv", row.names=T, col.names=T)
+
+
+fwrite(g_by_e_tvals_df, "g_by_e_tvals_df.csv", row.names=T, col.names=T)
+
+g_by_e_qvals <- t(apply(g_by_e_pvals_df, 1, function(x)  p.adjust(x, method='BH')))
+
+geno_fully_pene_feats <- g_by_e_qvals[2, ][is.numeric(g_by_e_qvals[2, ]) & !is.na(g_by_e_qvals[2, ]) & (g_by_e_qvals[2, ] < 0.05)]
+
+back_fully_pene_feats <- g_by_e_qvals[3, ][is.numeric(g_by_e_qvals[3, ]) & !is.na(g_by_e_qvals[3, ]) & (g_by_e_qvals[3, ] < 0.05)]
+
+int_fully_pene_feats <- g_by_e_qvals[5, ][is.numeric(g_by_e_qvals[5, ]) & !is.na(g_by_e_qvals[5, ]) & (g_by_e_qvals[5, ] < 0.05)]
+
+
+
+```
+
+# with 0.05 cut-off
+
+```{r, fig.width=11, fig.height=5.25}
+
+# plot full penetrance stuff:
+
+
+plot_fully_pene_feats <- function(tvals, signif_feats){
+  
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  cluster_df <- create_cluster_df(signif_tvals)
+  
+  non_sign_feats$Tvals <- tvals
+  
+  cluster_df$Tvals <- signif_tvals
+  
+  
+  pos_or_neg <- ifelse(signif_tvals < 0, "Negative", "Positive")
+  
+  cluster_df$Correlation <- pos_or_neg
+  
+  split_by_corr <- split(cluster_df, cluster_df$Correlation)
+  
+   # Check if split_by_corr$Positive is empty
+  is_positive_empty <- is.null(split_by_corr$Positive) || nrow(split_by_corr$Positive) == 0
+  
+  # Check if split_by_corr$Negative is NULL or empty
+  is_negative_empty <- is.null(split_by_corr$Negative) || nrow(split_by_corr$Negative) == 0
+  
+  
+  if (nrow(cluster_df)>0){
+    black_dots <- anti_join(non_sign_feats, cluster_df)
+    plot <- ggplot(mapping=aes(x = Type, y = Tvals, col=Correlation)) +
+      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+      labs(x = "Feature Type", 
+           y = expression("t-statistic"), color = "Association of Feature") +
+      theme_minimal()+
+      geom_point(data = black_dots, width = 0.5, position = position_dodge(width = 0.75), col="black")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+     if (!is_negative_empty){
+      plot <- plot + 
+      geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+ 
+      stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col="blue", vjust = 2)
+    }
+    if (!is_positive_empty){ 
+      plot <- plot+
+      geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75))+
+      stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col="red", vjust = -1)
+    }
+    
+    
+    plot <- plot +
+      facet_wrap(~Org, scales = "fixed", ncol = 5)+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
+      #scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8)) +
+      #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2), NA, FALSE)) +
+      #scale_color_manual(values = c("blue", "red"))+
+      scale_color_manual(values = c("Negative"="blue", "Positive"="red"))
+    
+    if (!is_positive_empty & !is_negative_empty){
+      plot <- plot + scale_y_continuous(limits=c(min(split_by_corr$Negative$Tvals)-3,max(split_by_corr$Positive$Tvals)+3))+
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+    } else if (!is_negative_empty){ 
+      plot <- plot + scale_y_continuous(limits=c(-8,8))+
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+      }
+    
+  } else {
+      print("wrong IF")
+      n_fun_zero_pos <- function(x){return(data.frame(y = max(x), label = 0))}
+      n_fun_zero_neg <- function(x){return(data.frame(y = min(x), label = 0))}
+      plot <- ggplot(data=non_sign_feats, mapping=aes(x = Type, y = Tvals)) +
+      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+      labs(x = "Feature Type", 
+           y = expression("t-statistic")) +
+      theme_minimal()+
+      geom_point(data = non_sign_feats, width = 0.5, position = position_dodge(width = 0.75), col="black") +
+      #stat_summary(data = non_sign_feats, fun.data = n_fun_zero_pos, geom = "text", col="black", vjust = 2)+
+      #stat_summary(data = split_by_corr$Positive, fun.data = n_fun_zero_neg, geom = "text", col="black", vjust = -1)+
+      facet_wrap(~Org, scales = "fixed", ncol = 5)+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none") +
+      scale_y_continuous(limits=c(min(non_sign_feats$Tvals)-3,max(non_sign_feats$Tvals)+3))
+      }
+  
+  #geom_segment(aes(x = "Org1_TypeB", xend = "Org2_TypeA", y = -Inf, yend = Inf), linetype = "dashed") 
+  #scale_color_manual(values = type_colors)
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2)&(Org == 'forebrain anteroventral region'), NA, FALSE))+
+  
+   
+  #geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+
+   
+  
+  print(plot)
+}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
+
+plot_fully_pene_feats(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+  
+plot_fully_pene_feats(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+
+plot_fully_pene_feats(g_by_e_tvals_df[5,], int_fully_pene_feats)
+
+#create it as a percentage:
+
+```
+
+```{r, fig.width=40, fig.height=20}
+
+plot_fully_pene_feats_as_percentages <-function(tvals, signif_feats){
+  
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  counts_table <- counts_table %>% mutate(Prop=Freq/Total)
+  
+  # compute mean and standard error of the mean by subgroup
+  summary_stat <- summarySE(counts_table,
+  measurevar = "Prop",
+  groupvars = c("Type", "Org")
+  )
+  # plot mean and standard error of the mean
+  ggplot(subset(summary_stat, !is.na(Org)), # remove NA level for Type
+         aes(x = Org, y = Prop, fill=Type))+
+    geom_col() +
+    geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), # add error bars
+    width = 0.1 # width of error bars
+    ) +
+    scale_y_continuous(limits=c(0,1))+
+    labs(y = "Proportion of Features", x="Organ")+
+    facet_wrap(~Type, ncol = 1)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = "none")
+  
+  # compute mean and standard error of the mean by subgroup
+  summary_stat <- summarySE(counts_table,
+  measurevar = "Prop",
+  groupvars = c("Filter", "Org", "Type")
+  )
+  # plot mean and standard error of the mean
+  ggplot(subset(summary_stat, !is.na(Org)), # remove NA level for Type
+         aes(x = Org, y = Prop, fill=Type))+
+    geom_col() +
+    geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), # add error bars
+    width = 0.1 # width of error bars
+    ) +
+    scale_y_continuous(limits=c(0,1))+
+    labs(y = "Proportion of Features", x="Organ")+
+    facet_wrap(~Type*Filter, ncol = 14)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = "none")
+  
+}
+
+stats_per_type<- function(tvals, signif_feats){
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  counts_table <- counts_table %>% mutate(Non_Counts=Total-Freq)
+
+  
+  table_per_type <- split(counts_table, counts_table$Type)
+  
+  pvals_per_type <- lapply(table_per_type, function(table){
+    
+    #table <- table %>% group_by(Org)
+    table_summary <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = table, FUN = mean)
+    
+    contingency_table <- as.matrix(table_summary[, c("Freq", "Non_Counts")])
+  
+    fisher_test <- fisher.test(contingency_table, simulate.p.value=TRUE)
+  
+    return(fisher_test$p.value)
+  })
+  
+  
+  mean_filt_table <- aggregate(cbind(Freq, Non_Counts) ~ Type*Org, data = counts_table, FUN = mean)
+  
+  is_type_sign_table <- aggregate(cbind(Freq, Non_Counts) ~ Type, data = mean_filt_table, FUN = sum)
+  
+  
+  print(fisher.test(as.matrix(is_type_sign_table[, c("Freq", "Non_Counts")]),simulate.p.value=TRUE))
+  
+  
+  is_org_sign_table <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = mean_filt_table, FUN = sum)
+  
+  
+  print(fisher.test(as.matrix(is_org_sign_table[, c("Freq", "Non_Counts")]),simulate.p.value=TRUE))
+  
+  
+  
+  qvals <-p.adjust(pvals_per_type, method='BH')
+  
+  print(qvals)
+  
+  sign_tables <- table_per_type[qvals < 0.05]
+  
+  test <- lapply(sign_tables, function(table){
+    
+    p_matrix <- pairwise_fisher(table)
+    #p_values <- p_matrix[upper.tri(p_matrix, diag = FALSE)]  # Extract upper triangle p-values
+    #p_adj <- p.adjust(p_values, method = "bonferroni")             # Adjust p-values
+    
+    # Insert the adjusted p-values back into the matrix
+    #p_matrix[upper.tri(p_matrix, diag = FALSE)] <- p_adj
+    #p_matrix[lower.tri(p_matrix, diag = FALSE)] <- p_adj     # Reflect adjusted p-values to lower triangle
+    
+    # Use `multcompLetters` to generate the compact letter display (CLD)
+    cld_result <- multcompLetters(p_matrix, threshold =0.05, compare = "<")
+    
+  
+    
+    print(cld_result)
+
+    
+  })
+  
+  
+}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df[5,], int_fully_pene_feats)
+
+stats_per_type(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+stats_per_type(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+
+
+```
+
+
+```{r, fig.width=14, fig.height=20}
+
+
+# Define the plotting function
+plot_logistic_regression <- function(tvals, signif_feats){
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  
+  counts_table <- expand_counts_table(counts_table)
+  
+  
+  
+  #counts_table[is.na(counts_table)] <- 0
+  
+  
+  #counts_table <- expand_counts_table(counts_table)
+  
+  #So for filter - the orginal filter should be the baseline:
+  
+ 
+  
+  counts_table$Filter <- factor(counts_table$Filter, levels = c("original", setdiff(levels(counts_table$Filter), "original")))
+
+  counts_table$Type <- factor(counts_table$Type, levels = c("shape", setdiff(levels(counts_table$Type), "shape")))
+  
+  #counts_table$Org <- factor(counts_table$Org, levels = c("forebrain between lateral ventricles", setdiff(levels(counts_table$Org), "forebrain between lateral ventricles")))
+  
+  
+  #counts_table <- counts_table %>% mutate_all(funs(str_replace_all(., " ", "_")))
+  
+  
+  # List of variables to calculate counts for
+  variables <- c("Type", "Org", "Filter")
+  # Loop through each variable
+  
+  for (var in variables) {
+    # Print the name of the variable
+    cat("\nNumber of observations for each level of", var, ":\n")
+    # Group by the variable and count observations
+    counts <- counts_table %>% dplyr::group_by(!!sym(var))
+    print(counts)
+    counts <- counts_table %>% dplyr::group_by(!!sym(var)) %>% dplyr::summarise(n = dplyr::n(), .groups = "drop")
+    # Print the result
+    print(counts)
+    }
+  
+  
+  # Step 1: Fit logistic regression model, -1 removes the intercept, this sets the baseline to 0 in the model. 
+  
+  # Convert data to a model matrix with all main effects and interactions
+  #x <- model.matrix(Significant ~ Org * Type * Filter, data = counts_table)  # -1 to exclude intercept
+  #y <- counts_table$Significant  # Response variable
+  
+  # Assuming X is the design matrix and y is the binary response variable
+  #model <- debiased.glmnet(X, y, family = "binomial")
+  #print(summary(model))
+  
+  
+  
+  # Fit LASSO model with cross-validation to find optimal lambda
+  #lasso_model <- cv.glmnet(x, y, family = "binomial", alpha = 1)  # alpha = 1 for LASSO
+  #best_lambda <- lasso_model$lambda.min  # Optimal lambda
+  
+  
+  
+  # Get the coefficients at the best lambda (optimal regularization)
+  #selected_coefs <- coef(lasso_model, s = best_lambda)
+  
+  # Filter out the zero coefficients
+  #selected_coefs_matrix <- as.matrix(selected_coefs)
+  #selected_terms <- rownames(selected_coefs_matrix)[selected_coefs_matrix != 0]
+  #selected_terms <- selected_terms[selected_terms != "(Intercept)"]  # Exclude intercept if present
+  
+  
+  #cat("\n Selected Terms \n")
+  #print(selected_terms)
+  
+  
+  #cat("\n Summary of model \n")
+  
+  #selected_formula <- as.formula(paste("Significant ~", paste(selected_terms, collapse = " + ")))
+  
+  #print(selected_formula)
+
+  
+  # Fit the logistic regression model with only the selected terms
+  
+  model <- glm(Significant~Type + Org + Filter, family="binomial",
+               data = counts_table, na.action = na.fail)
+  
+  #model2 <- glm(Significant~Type:Org + Org:Filter + Type:Filter + Type + Org + Filter, 
+  #              data = counts_table, family = binomial)
+  
+  
+  #print(check_collinearity(model))
+  
+  print(check_model(model))
+  
+  
+  #print(anova(model2, model, test = "Chisq"))
+  
+  results_table <- as.data.frame(coef(summary(model)))
+  
+  results_table$`Pr(>|z|)` <- p.adjust(results_table$`Pr(>|z|)`, method = "BH")
+  
+  
+  #results_table <-results_table %>% filter(`Pr(>|z|)` < 0.05)
+  
+  print(results_table)
+  
+  options(na.action = "na.fail")
+  
+  model_selection <- dredge(model)
+  # View model selection results
+  summary(model_selection)
+  
+  best_models <- get.models(model_selection, subset = delta < 2)  # Select models within 2 AIC units
+
+  # Extract and display p-values from the selected models
+  for (i in seq_along(best_models)) {
+    cat("Model", i, "p-values:\n")
+    good_results <- as.data.frame(coef(summary(best_models[[i]])))
+    cat("\n")
+  }
+  
+  
+  
+  print(check_model(best_models[[1]]))
+  
+  good_results$`Pr(>|z|)` <- p.adjust(good_results$`Pr(>|z|)`, method = "BH")
+  
+  good_results <- good_results %>% filter(`Pr(>|z|)` < 0.05)
+  
+  print(good_results)
+  
+  
+  
+  
+  print(length(good_results[good_results < 0.05]))
+
+  # View model selection results
+  #summary(model_selection)
+  
+  options(na.action = "na.omit")
+  # Step 2: Get predicted probabilities with confidence intervals
+  emm <- emmeans(model, ~Type + Org + Filter, type = "response")
+  emm_df <- as.data.frame(emm)
+  
+  
+  
+  
+  # empty rows give stupid CIs
+  emm_df <- emm_df %>% filter(prob > 0.01)
+  
+  # Step 3: Plot predicted probabilities with confidence intervals
+  plot <- ggplot(emm_df, aes(x = Org, y = prob, color = Type)) +
+    geom_point(size = 3, position = position_dodge(width = 0.5)) +
+    geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
+                  width = 0.2, position = position_dodge(width = 0.5)) +
+    labs(
+      title = "Predicted Probabilities of Significant Features by Type, Filter and Org",
+      x = "Org",
+      y = "Predicted Probability",
+      color = "Type"
+    ) +
+    theme_minimal() +
+    facet_wrap(~Filter, ncol=3)+
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 16),
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      legend.position = "top"
+    )
+  
+  return(plot)
+}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
+
+plot_logistic_regression(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+plot_logistic_regression(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+
+#non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
+
+#plot_logistic_regression(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+
+#plot_logistic_regression(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+
+
+```
+
+```{r, fig.width=8, fig.height=8}
+
+plot_poisson_regression <- function(tvals, signif_feats){
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  
+  # perform poisson regression:
+
+  # Proceed with setting the baseline levels
+  counts_table$Filter <- factor(counts_table$Filter, levels = c("original", setdiff(levels(counts_table$Filter), "original")))
+  counts_table$Type <- factor(counts_table$Type, levels = c("shape", setdiff(levels(counts_table$Type), "shape")))
+  counts_table$Org <- factor(counts_table$Org, levels = c("pons", setdiff(levels(counts_table$Org), "pons")))
+  
+  #counts_table <- counts_table %>% filter(Type!="shape")
+  
+  #model_poisson <- glm(Freq ~ Type+Filter+Org, family = poisson(link = "log"), offset = log(Total), data = counts_table)
+  print(counts_table)
+  library(pscl)
+  model_poisson <- glm(Freq ~ Type+Filter+Org + offset(log(Total)), data= counts_table, family=quasipoisson(link = "log"))
+  
+  print(summary(model_poisson))
+  #model_poisson <- stepAIC(model_poisson, direction = "both")
+
+  # View the model summary
+  print(hist(counts_table$Freq))
+  print(check_collinearity(model_poisson))
+  
+  print(check_model(model_poisson, residual_type = "normal"))
+  #print(summary(model_poisson))
+  
+  print(coef(summary(model_poisson)))
+  
+  #pois_results <- as.data.frame(coef(summary(model_poisson))) %>% filter(`Pr(>|z|)` < 0.05)
+  
+  #print(pois_results)
+  
+  
+  #ld.vars <- attributes(alias(model_poisson)$Complete)$dimnames[[1]]
+  
+  #print(ld.vars)
+  #print(vif(model_poisson))
+  
+  
+  
+  #print(penis)
+  
+  pois_results <- as.data.frame(coef(summary(model_poisson))$count) %>% filter(`Pr(>|z|)` < 0.05)
+  
+  #print(pois_results)
+  
+ 
+  return(pois_results)
+}
+
+
+plot_poisson_regression(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+plot_poisson_regression(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+```
+
+```{r, fig.width=9, fig.height=4.5}
+
+plot_per_filt_type <- function(tvals, signif_feats) {
+  
+  # Prepare the data, similar to the `plot_fully_pene_feats_as_percentages` function
+  signif_tvals <- tvals[names(tvals) %in% names(signif_feats)]
+  
+  if (length(signif_tvals) == 0) {
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% 
+      as.data.frame() %>% filter(Freq > 0) %>% mutate(Freq = 0)
+  } else {
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% 
+    as.data.frame() %>% filter(Freq > 0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+  
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x = FALSE, all.y = TRUE, by = c("Filter", "Type", "Org"))
+  counts_table[is.na(counts_table)] <- 0
+  counts_table <- counts_table %>% mutate(Prop = Freq / Total, Non_Counts = Total - Freq)
+  
+  # Compute mean and standard error of the mean by subgroup
+  summary_stat <- summarySE(counts_table, measurevar = "Prop", groupvars = c("Filter", "Type", "Org"))
+  
+  # Create the plot using facet_grid
+  plot <- ggplot(subset(summary_stat, !is.na(Org)), aes(x = Org, y = Prop, fill = Type)) +
+    geom_col() +
+    geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), width = 0.1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(y = "Proportion of Features", x = "Organ") +
+    facet_grid(Type ~ Filter) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+  
+  # Calculate partial Fisher squares and perform tests
+  
+  fisher_results <- lapply(split(counts_table, list(counts_table$Type, counts_table$Filter)), function(sub_table) {
+    if (nrow(sub_table) == 0) {
+    message("No data for summary statistics. Returning empty p-value")
+    return(NA)
+  }
+    table_summary <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = sub_table, FUN = sum)
+    if (sum(table_summary$Freq) ==0){
+      return(1)
+    }
+    contingency_table <- as.matrix(table_summary[, c("Freq", "Non_Counts")])
+    print(contingency_table)
+    fisher_test <- fisher.test(contingency_table, simulate.p.value = TRUE)
+    return(fisher_test$p.value)
+  })
+  
+  # Convert the list of p-values into a data frame for heatmap visualization
+  fisher_pvals_df <- do.call(rbind, lapply(names(fisher_results), function(name) {
+    split_name <- strsplit(name, "\\.")[[1]]
+    data.frame(Type = split_name[1], Filter = split_name[2], P_Value = fisher_results[[name]])
+  }))
+  
+  fisher_pvals_df$Adj_P_Value <- p.adjust(fisher_pvals_df$P_Value, method = "BH")
+  
+  # Create a 2D heatmap of p-values
+  heatmap <- ggplot(fisher_pvals_df, aes(x = Filter, y = Type, fill = -log10(Adj_P_Value))) +
+    geom_tile() +
+    scale_fill_viridis_c(
+    option = "inferno",
+    values = scales::rescale(c(0, 1.75, 2, 3.25)),
+    limits = c(0, 4)) +
+     labs(title = "Heatmap of Fisher Test P-Values", x = "Filter", y = "Type", fill = "-log10(P.value)")  +
+    theme_minimal()+
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  
+  # Print the plot and heatmap
+  print(plot)
+  print(heatmap)
+}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
+plot_per_filt_type(g_by_e_tvals_df[3,], back_fully_pene_feats)
+plot_per_filt_type(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+#non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
+#plot_per_filt_type(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+#plot_per_filt_type(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+
+#non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v3[1,])
+#plot_per_filt_type(g_by_e_tvals_df_v3[3,], back_fully_pene_feats_v3)
+
+```
+
+
+```{r}
+
+logistic_regression_analysis <- function(tvals, signif_feats){
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  
+  counts_table <- expand_counts_table(counts_table)
+  
+  #So for filter - the orginal filter should be the baseline:
+  
+  counts_table$Filter <- factor(counts_table$Filter, levels = c("original", setdiff(levels(counts_table$Filter), "original")))
+  
+  counts_table$Type <- factor(counts_table$Type, levels = c("shape", setdiff(levels(counts_table$Type), "shape")))
+  
+  counts_table$Org <- factor(counts_table$Org, levels = c("forebrain between lateral ventricles", setdiff(levels(counts_table$Org), "forebrain between lateral ventricles")))
+  
+  model <- glm(Significant ~ Org*Type*Filter, data = counts_table, family = binomial)
+  cat("Logistic Regression Model Summary:\n")
+  print(summary(model))
+  
+  
+  # Step 4: Odds Ratios with 95% Confidence Intervals
+  cat("\nOdds Ratios and 95% Confidence Intervals:\n")
+  odds_ratios <- exp(cbind(Odds_Ratio = coef(model), confint(model)))
+  print(odds_ratios)
+  
+  # Step 5: Model Diagnostics
+  cat("\nModel Diagnostics:\n")
+  
+  # Hosmer-Lemeshow goodness-of-fit test
+  hoslem_test <- hoslem.test(counts_table$Significant, fitted(model))
+  print(hoslem_test)
+  
+  # Step 6: Optional interaction analysis
+  #model_interaction <- glm(Significant ~ Type * Org * Filter, data = counts_table, family = binomial)
+  #cat("\nInteraction Model Summary:\n")
+  #print(summary(model_interaction))
+  
+  base_model<- glm(Significant ~ Org+Type+Filter, data = counts_table, family = binomial)
+  
+  # Post-hoc tests on interaction if significant
+  if (anova(base_model, model, test="Chisq")[2, "Pr(>Chi)"] < 0.05) {
+    cat("\nSignificant Interaction Detected. Performing Pairwise Comparisons by Org:\n")
+    interaction_pairwise <- emmeans(model, pairwise ~ Type | Org, adjust = "BH")
+    print(interaction_pairwise$contrasts)
+  } else {
+    cat("\nNo significant interaction detected between Type and Org.\n")
+  }
+  
+  # Return all results as a list
+  return(list(
+    model_summary = summary(model),
+    odds_ratios = odds_ratios,
+    type_pairwise = type_pairwise,
+    org_pairwise = org_pairwise,
+    hoslem_test = hoslem_test,
+    interaction_model_summary = summary(model_interaction)
+  ))
+}
+
+# Example usage:
+# result <- logistic_regression_analysis(counts_table)
+
+
+
+logistic_regression_analysis(g_by_e_tvals_df[3,], back_fully_pene_feats)
+
+logistic_regression_analysis(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+
+
+```
+
+
+## Full penetrance plotting for genotype, background and interaction effects
+```{r, fig.width==11, fig.height=6}
+
+#rad_info_v2 <- rad_info_v2 %>% select_if(~ !any(is.na(.)))
+# get largest col 
+end_col <- ncol(rad_info_v2)-5
+
+# Determine the number of cores to use
+num_cores <- detectCores()/2 - 1  # Use one less than the total number of cores
+
+# Run the function in parallel using mclapply
+g_by_e_pvals_v2 <- pblapply(rad_info_v2[, 2:end_col], function(data) {
+  g_by_e_lm(data, rad_info_v2, pair_test = F)
+}, cl = num_cores)
+
+
+
+g_by_e_pvals_v2_filtered <- Filter(function(mat) {
+  is.list(mat) && !is.null(mat$pvals)
+}, g_by_e_pvals_v2)
+
+g_by_e_pvals_df_v2 <- do.call(cbind, lapply(g_by_e_pvals_v2, function(mat) {
+  mat$pvals
+}))
+
+
+
+g_by_e_tvals_df_v2 <- do.call(cbind, lapply(g_by_e_pvals_v2, function(mat) {
+  mat$tvals
+}))
+
+g_by_e_pvals_df_v2  <- relabel_df(g_by_e_pvals_df_v2, g_by_e_pvals_v2)
+
+g_by_e_tvals_df_v2  <- relabel_df(g_by_e_tvals_df_v2, g_by_e_pvals_v2)
+
+
+fwrite(g_by_e_pvals_df_v2, "g_by_e_pvals_df_v2.csv", row.names=T, col.names=T)
+
+
+fwrite(g_by_e_tvals_df_v2, "g_by_e_tvals_df_v2.csv", row.names=T, col.names=T)
+
+g_by_e_qvals_v2 <- t(apply(g_by_e_pvals_df_v2, 1, function(x)  p.adjust(x, method='BH')))
+
+geno_fully_pene_feats_v2 <- g_by_e_qvals_v2[2, ][g_by_e_qvals_v2[2, ] < 0.05]
+
+back_fully_pene_feats_v2 <- g_by_e_qvals_v2[3, ][g_by_e_qvals_v2[3, ] < 0.05]
+
+int_fully_pene_feats_v2 <- g_by_e_qvals_v2[5, ][g_by_e_qvals_v2[5, ] < 0.05]
+
+```
+
+
+```{r, fig.width=11, fig.height=4}
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
+
+plot_fully_pene_feats(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+  
+plot_fully_pene_feats(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+
+plot_fully_pene_feats(g_by_e_tvals_df_v2[5,], int_fully_pene_feats_v2)
+
+
+stats_per_type(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+
+stats_per_type(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+
+```
+
+
+```{r}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
+
+plot_logistic_regression(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+
+plot_logistic_regression(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+
+```
+
+```{r, fig.width=3, fig.height=9}
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v2[2,], geno_fully_pene_feats_v2)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v2[3,], back_fully_pene_feats_v2)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v2[5,], int_fully_pene_feats_v2)
+
+```
+
+# merged dataset
+
+
+
+```{r, fig.width==11, fig.height=6}
+
+#rad_info_v3 <- rad_info_v3 %>% select_if(~ !any(is.na(.)))
+# get largest col 
+end_col <- ncol(rad_info_v3)-5
+
+# Determine the number of cores to use
+num_cores <- detectCores()/2 - 1  # Use one less than the total number of cores
+
+# Run the function in parallel using mclapply
+g_by_e_pvals_v3 <- pblapply(rad_info_v3[, 2:end_col], function(data) {
+  g_by_e_lm(data, rad_info_v3, pair_test = F)
+}, cl = num_cores)
+
+
+
+g_by_e_pvals_v3_filtered <- Filter(function(mat) {
+  is.list(mat) && !is.null(mat$pvals)
+}, g_by_e_pvals_v3)
+
+g_by_e_pvals_df_v3 <- do.call(cbind, lapply(g_by_e_pvals_v3, function(mat) {
+  mat$pvals
+}))
+
+
+
+g_by_e_tvals_df_v3 <- do.call(cbind, lapply(g_by_e_pvals_v3, function(mat) {
+  mat$tvals
+}))
+
+g_by_e_pvals_df_v3  <- relabel_df(g_by_e_pvals_df_v3, g_by_e_pvals_v3)
+
+g_by_e_tvals_df_v3  <- relabel_df(g_by_e_tvals_df_v3, g_by_e_pvals_v3)
+
+
+fwrite(g_by_e_pvals_df_v3, "g_by_e_pvals_df_v3.csv", row.names=T, col.names=T)
+
+
+fwrite(g_by_e_tvals_df_v3, "g_by_e_tvals_df_v3.csv", row.names=T, col.names=T)
+
+g_by_e_qvals_v3 <- t(apply(g_by_e_pvals_df_v3, 1, function(x)  p.adjust(x, method='BH')))
+
+geno_fully_pene_feats_v3 <- g_by_e_qvals_v3[2, ][g_by_e_qvals_v3[2, ] < 0.05]
+
+back_fully_pene_feats_v3 <- g_by_e_qvals_v3[3, ][g_by_e_qvals_v3[3, ] < 0.05]
+
+int_fully_pene_feats_v3 <- g_by_e_qvals_v3[5, ][g_by_e_qvals_v3[5, ] < 0.05]
+
+```
+
+
+```{r, fig.width=11, fig.height=8}
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v3[1,])
+
+plot_fully_pene_feats(g_by_e_tvals_df_v3[2,], geno_fully_pene_feats_v3)
+  
+plot_fully_pene_feats(g_by_e_tvals_df_v3[3,], back_fully_pene_feats_v3)
+
+plot_fully_pene_feats(g_by_e_tvals_df_v3[5,], int_fully_pene_feats_v3)
+```
+
+
+```{r, fig.width=30, fig.height=15}
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v3[2,], geno_fully_pene_feats_v3)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v3[3,], back_fully_pene_feats_v3)
+
+plot_fully_pene_feats_as_percentages(g_by_e_tvals_df_v3[5,], int_fully_pene_feats_v3)
+
+```
+## fully pene stats pr
+
+```{r}
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v3[1,])
+
+plot_logistic_regression(g_by_e_tvals_df_v3[3,], back_fully_pene_feats_v3)
+
+plot_logistic_regression(g_by_e_tvals_df_v3[2,], geno_fully_pene_feats_v3)
+  
+
+stats_per_type(g_by_e_tvals_df_v3[3,], back_fully_pene_feats_v3)
+
+stats_per_type(g_by_e_tvals_df_v3[2,], geno_fully_pene_feats_v3)
+
+#stats_per_type(g_by_e_tvals_df_v3[5,], int_fully_pene_feats_v3)
+
+```
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r echo=FALSE}
+# Identifies significant feats (i.e., feats with a mean-vol != 1 are significant, 
+# feats ==1 were non significant in perm but were labelled as 1 as NA stuffed clustermapping)
+signif_feat_finder <- function(heatmap_str, rad_info,HPE_bros, out_dir, staging_str){
+  #reads heatmap and fixes first column name
+  significant_feats <- read_csv(heatmap_str)
+  colnames(significant_feats)[1] <- "vol"
+  
+  #replaces spaces with _ to match rad_info
+  colnames(significant_feats) <- str_replace_all(colnames(significant_feats), " ", "_") 
+  
+  colnames(significant_feats) <- gsub("[0-9.]", "", colnames(significant_feats)) 
+  
+  # removes i) duplicated columns and ii) feats significant in any C3Hs and all wts. Can't do a perfect 1 threshold as 1 in 20 odd embryos can be significant in
+  # wild-types (p<0.05) = 5% chance of false negatives
+  
+  significant_feats <- significant_feats %>% dplyr::select(unique(names(.)))
+  
+  # keep a copy before filtering
+  all_feats <- significant_feats
+  
+  background <- significant_feats %>% filter(str_detect(vol, "wt")) %>% select_if(is.numeric)
+  C3Hs <- significant_feats %>% filter(str_detect(vol, "C3H")) %>% select_if(is.numeric)
+  
+  cols_outside_range <- names(which(colMeans(background) < 0.95 | colMeans(background) > 1.05))
+  
+  cols_outside_range2 <- names(which(colMeans(C3Hs) < 0.95 |colMeans(C3Hs) > 1.05))
+  
+  HPE_feats <- significant_feats %>%
+    filter(vol %in% HPE_bros) %>% select_if(is.numeric)
+  
+  bad_HPE_feats <- names(which(apply(HPE_feats, 2, function(x) any(x == 1))))
+  
+  good_HPE_feats <- names(which(apply(HPE_feats, 2, function(x) all(x != 1))))
+  
+
+  significant_feats <- significant_feats[,!(colnames(significant_feats) %in% c(cols_outside_range, cols_outside_range2, bad_HPE_feats))]
+  
+  
+  significant_feats <- significant_feats[,(colnames(significant_feats) %in% c("vol", good_HPE_feats))]
+  
+  #write.csv(significant_feats, out_dir)
+  
+  filtered_dataset <- rad_info[, colnames(rad_info) %in% colnames(significant_feats)]
+
+  filtered_dataset$vol <- rad_info$vol
+  
+  staging_info <- read_csv(staging_str)
+  
+
+  filtered_dataset <- merge(filtered_dataset, staging_info, by='vol')
+  
+  return(list(significant_feats = significant_feats, all_feats = all_feats, filtered_dataset = filtered_dataset))
+    
+}
+
+
+
+sev_HPE_bros <- c("210913_b6ku_22300_e6_het",
+"210913_b6ku_22300_e8_het",
+"220422_BL6_Ku_50_e5_het")
+
+HPE_bros <- c("210913_b6ku_22300_e6_het",
+"210913_b6ku_22300_e8_het",
+"210926_b6ku_22296_e7_het",
+"210926_b6ku_22299_e1_het",
+"220422_BL6_Ku_50_e5_het")
+
+HPE_cohort_3_bros <- c('231218_B6_Ku_92_e3_het', '240321_BL6_153_e4_het', '240427_BL6_174_e2_het',
+               '240404_BL6_Ku_190_e2_het', '240530_BL6_Ku_145_e1_het','240530_BL6_Ku_35_e2_het',
+                 '231106_B6_Ku_88_e3_het', '240308_BL6_164_e5_het', '240530_BL6_Ku_69_e8_het',
+                 '231120_B6_Ku_204_e4_het', '231218_B6_Ku_100_e1_wt', '240407_BL6_Ku_188_e5_het')
+
+HPE_cohort_3_sev <- c('231218_B6_Ku_92_e3_het', '240321_BL6_153_e4_het', '240427_BL6_174_e2_het',
+                      '240530_BL6_Ku_145_e1_het','240530_BL6_Ku_35_e2_het')
+
+HPE_cohort_3_mild <- c('231218_B6_Ku_100_e1_wt','240308_BL6_164_e5_het', '231106_B6_Ku_88_e3_het', 
+                       '240407_BL6_Ku_188_e5_het', '231120_B6_Ku_204_e4_het', '240530_BL6_Ku_69_e8_het')
+
+HPE_cohort_3_phil <- c('231218_B6_Ku_100_e1_wt','240308_BL6_164_e5_het', '231106_B6_Ku_88_e3_het')
+
+HPE_cohort_3_ant <- c('240530_BL6_Ku_69_e8_het','231120_B6_Ku_204_e4_het', '240407_BL6_Ku_188_e5_het',
+                      '231218_B6_Ku_92_e3_het', '240321_BL6_153_e4_het', '240427_BL6_174_e2_het',
+                      '240530_BL6_Ku_145_e1_het','240530_BL6_Ku_35_e2_het')
+
+result <- signif_feat_finder("full_datasets_heatmap.csv", rad_info, HPE_bros, "significant_feats_exact.csv", "220914_full_staging.csv")
+
+significant_feats <- result$significant_feats
+all_feats <- result$all_feats
+filt_dataset <- result$filtered_dataset
+
+
+result_sev <- signif_feat_finder("full_datasets_heatmap.csv", rad_info, sev_HPE_bros, "significant_feats_exact_sev.csv", "220914_full_staging.csv")
+
+all_feats_sev <- result_sev$all_feats
+filt_dataset_sev <- result_sev$filtered_dataset
+significant_feats_sev <- result_sev$significant_feats
+
+
+result_cohort3 <- signif_feat_finder("full_datasets_heatmap_cohort_3.csv", rad_info_v2, HPE_cohort_3_mild, "significant_feats_exact_cohort_3.csv","240708_full_staging.csv")
+
+significant_feats_c3 <- result_cohort3$significant_feats
+all_feats_c3 <- result_cohort3$all_feats
+filt_dataset_c3 <- result_cohort3$filtered_dataset
+
+
+
+result_cohort3_sev <- signif_feat_finder("full_datasets_heatmap_cohort_3.csv", rad_info_v2, HPE_cohort_3_sev, "significant_feats_exact_cohort_3.csv","240708_full_staging.csv")
+
+significant_feats_c3_sev <- result_cohort3_sev$significant_feats
+all_feats_c3_sev <- result_cohort3_sev$all_feats
+filt_dataset_c3_sev <- result_cohort3_sev$filtered_dataset
+
+
+
+result_phil <- signif_feat_finder("full_datasets_heatmap_cohort_3.csv",  rad_info_v2, HPE_cohort_3_phil, "significant_feats_exact_cohort_3_phil.csv", "240708_full_staging.csv")
+
+significant_feats_c3_phil <- result_phil$significant_feats %>%  filter(if_any(where(is.numeric), ~ . != 1))
+all_feats_c3_phil <- result_phil$all_feats
+filt_dataset_c3_phil <- result_phil$filtered_dataset
+
+
+result_ant <- signif_feat_finder("full_datasets_heatmap_cohort_3.csv",  rad_info_v2, HPE_cohort_3_ant, "significant_feats_exact_cohort_3.csv", "240708_full_staging.csv")
+
+significant_feats_c3_ant <- result_ant$significant_feats %>%  filter(if_any(where(is.numeric), ~ . != 1))
+all_feats_c3_ant <- result_ant$all_feats
+filt_dataset_c3_ant <- result_ant$filtered_dataset
+
+```
+
+```{r fig.width=5, fig.height=9}
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
+#plot_fully_pene_feats_as_percentages(significant_feats_sev, all_feats_sev)
+#plot_fully_pene_feats_as_percentages(significant_feats, all_feats)
+
+#non_sign_feats <- create_cluster_df(all_feats_sev)
+
+#plot_logistic_regression(filt_dataset_sev, significant_feats_sev)
+
+```
+
+```{r fig.height=5, fig.width=5}
+
+
+plot_fully_pene_feats_as_percentages_just_av <-function(tvals, signif_feats){
+  
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  if(length(signif_tvals)==0){
+    
+    signif_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0) %>% mutate(Freq=0)
+    
+  } else{
+    signif_df <- create_cluster_df(signif_tvals)
+    signif_df_counts <- table(signif_df$Filter, signif_df$Type, signif_df$Org, useNA = "ifany") %>% as.data.frame()
+  }
+  
+  
+  all_df_counts <- table(non_sign_feats$Filter, non_sign_feats$Type, non_sign_feats$Org, useNA = "ifany") %>% as.data.frame() %>% filter(Freq>0)
+  
+  colnames(signif_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+  colnames(all_df_counts) <- c("Filter", "Type", "Org", "Total")
+
+  counts_table <- merge(signif_df_counts, all_df_counts, all.x=F, all.y=T, by=c("Filter", "Type","Org"))
+  
+  counts_table <- counts_table %>% filter(Org=="forebrain anteroventral region")
+  
+  counts_table[is.na(counts_table)] <- 0
+  
+  counts_table <- counts_table %>% mutate(Prop=Freq/Total)
+  
+  counts_table$Type <- factor(counts_table$Type, levels = sort(unique(counts_table$Type)))
+  
+  # compute mean and standard error of the mean by subgroup
+  summary_stat <- summarySE(counts_table,
+  measurevar = "Prop",
+  groupvars = c("Type", "Org")
+  )
+  summary_stat$Type <- factor(summary_stat$Type, levels = c("firstorder", "glcm", "gldm", "glrlm", "glszm", "ngtdm", "shape"))
+  
+  # plot mean and standard error of the mean
+  ggplot(summary_stat, # remove NA level for Type
+         aes(x = Type, y = Prop, fill=Type))+
+    geom_col() +
+    geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), # add error bars
+    width = 0.1 # width of error bars
+    ) +
+    scale_y_continuous(limits=c(0,1))+
+    labs(y = "Proportion of Features", x="Type")+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = "none")
+}
+
+
+
+
+plot_fully_pene_feats_as_percentages_just_av(significant_feats_sev, all_feats_sev)
+plot_fully_pene_feats_as_percentages_just_av(significant_feats, all_feats)
+
+```
+
+
+```{r fig.width=4.5, fig.height=4}
+
+quantify_rad_feats <- function(dataset, HPE_bros, signif_feats){
+  
+  #signif_feats <- signif_feats[(colnames(signif_feats) %in% c("vol",near_close))]
+  
+  significant_feats_means <- signif_feats %>% filter(vol %in% HPE_bros) %>% select_if(is.numeric) %>% colMeans()
+  
+  signif_feats <- signif_feats %>% dplyr::select(-vol)
+  
+  cluster_df <- create_cluster_df(signif_feats)
+  
+  #cluster_df$Type<-factor(cluster_df$Type, levels = c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+  
+  cluster_df$VolMean <- significant_feats_means
+  
+  pos_or_neg <- ifelse(significant_feats_means < 1, "Negative", "Positive")
+  
+  cluster_df$Correlation <- pos_or_neg
+  
+  split_by_corr <- split(cluster_df, cluster_df$Correlation)
+  
+  my_palette <- hcl.colors(7, palette = "Dark3")
+  
+  
+  type_colors <- setNames(my_palette, c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+  
+  # Check if split_by_corr$Positive is empty
+  is_positive_empty <- is.null(split_by_corr$Positive) || nrow(split_by_corr$Positive) == 0
+  
+  print(is_positive_empty)
+  # Check if split_by_corr$Negative is NULL or empty
+  is_negative_empty <- is.null(split_by_corr$Negative) || nrow(split_by_corr$Negative) == 0
+  
+  plot <- ggplot(mapping = aes(x = Type, y = log2(VolMean), col = Correlation)) +
+    labs(x = "Feature Type", 
+         y = expression("Log"[2] * "(" * frac("Mean HPE Embryo Measurement", "Mean Non-HPE Embryo Measurement") * ")"), 
+       color = "Association of Feature")+
+    theme_minimal()+
+    scale_x_discrete(limits = c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))+
+    scale_color_manual(values = c("Positive" = "red", "Negative" = "blue"))
+  
+  # Add Negative data if it's not empty
+  if (!is_negative_empty) {plot <- plot +
+      geom_boxplot(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75)) + 
+      stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col = "blue", vjust = 2)
+  }
+  # Add Positive data if it's not empty
+  if (!is_positive_empty) {plot <- plot +
+    geom_boxplot(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+    stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col = "red", vjust = -1)
+  }
+  
+  # panel wrap if needed 
+  if (length(unique(cluster_df$Org))>4){plot <- plot +
+    facet_wrap(~Org, scales = "fixed", nrow = 1, labeller = as_labeller(label_wrap_custom))+
+    scale_y_continuous(limits = c(-3, 3), breaks = seq(-3, 3, by = 1))+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.975, 0.075), 
+          legend.justification = c(0.975, 0.075),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))
+    
+  } else if (length(unique(cluster_df$Org))>1){plot <- plot +
+    facet_wrap(~Org, scales = "fixed", nrow = 1)+
+    scale_y_continuous(limits = c(-3, 3.35), breaks = seq(-3, 3, by = 1))+
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.975, 0.075), 
+          legend.justification = c(0.975, 0.075),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))}
+  else{plot <- plot + 
+    scale_y_continuous(limits = c(-2.25, 2.25), breaks = seq(-2, 2, by = 1))+
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.975, 0.075), 
+          legend.justification = c(0.975, 0.075),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))}
+  
+    
+  
+  print(plot)
+
+}
+  
+
+label_wrap_custom <- function(variable) {
+  sapply(variable, function(x) {
+    if (nchar(x) > 12) {
+      paste(strwrap(x, width = 12), collapse = "\n")
+    } else {
+      x
+    }
+  })
+}
+
+
+
+quantify_rad_feats(filt_dataset,  HPE_bros, significant_feats)
+
+
+#quantify_rad_feats(filt_dataset_c3,  HPE_cohort_3_mild, significant_feats_c3)
+
+
+quantify_rad_feats(filt_dataset_c3_phil,  HPE_cohort_3_phil, significant_feats_c3_phil)
+
+quantify_rad_feats(filt_dataset_c3_ant,  HPE_cohort_3_ant, significant_feats_c3_ant)
+
+# get plot of overlaps:
+
+filt_dataset_over <- filt_dataset[,(intersect(colnames(filt_dataset_c3_ant), colnames(filt_dataset)))]
+
+significant_feats_over <- significant_feats[colnames(significant_feats) %in% colnames(filt_dataset_over)]
+
+
+#quantify_rad_feats(filt_dataset_over,  HPE_cohort_3_ant, significant_feats_c3_ant)
+quantify_rad_feats(filt_dataset_over, HPE_bros, significant_feats_over)
+
+
+
+
+```
+
+```{r,  fig.width=9, fig.height=4.5}
+quantify_rad_feats(filt_dataset_sev,  sev_HPE_bros, significant_feats_sev)
+
+quantify_rad_feats(filt_dataset_c3_sev,  HPE_cohort_3_sev, significant_feats_c3_sev)
+
+```
+
+```{r, fig.width=6, fig.height=4}
+
+prim_feats_in_second <- all_feats_c3[(all_feats_c3$vol %in% HPE_cohort_3_ant),(colnames(all_feats_c3) %in% colnames(filt_dataset))]
+
+prim_feats_in_second
+
+percentage_not_equal_1 <- function(column) {
+  not_equal_1 <- sum(column != 1)
+  total <- length(column)
+  percentage <- (not_equal_1 / total) * 100
+  return(percentage)
+}
+
+percentages_in_second <- sapply(prim_feats_in_second, percentage_not_equal_1)
+
+
+data.frame(percentages_in_second)
+
+perc_data <- data.frame(percentages_in_second) %>% filter(percentages_in_second == 87.5)
+
+quantify_rad_feats(filt_dataset_over, HPE_bros, significant_feats_over)
+
+
+near_close <- rownames(perc_data)
+
+
+filt_dataset_87 <- filt_dataset[,(c("vol",near_close))]
+
+significant_feats_87 <- significant_feats[colnames(significant_feats) %in% c("vol",near_close)]
+
+quantify_rad_feats(filt_dataset_87, HPE_bros, significant_feats_87)
+
+
+near_close
+```
+
+```{r setup}
+
+library(ComplexHeatmap)
+library(circlize)
+# Find non-volumetric shape differences
+get_non_vol_diffs <- function(fully_pene_feats, searchstr) {
+  diffs_tab <- create_cluster_df(fully_pene_feats) %>% split(.$Org)
+  all_df_tab <- create_cluster_df(fully_pene_feats) %>% split(.$Org)
+  
+  vol_diffs <- sapply(all_df_tab, function(x) any(str_detect(x$Stat, "VoxelVolume")))
+  groups_to_remove <- sapply(all_df_tab, function(x) any(str_detect(x$Type, "shape")))
+  negative_spaces <- sapply(all_df_tab, function(x) any(str_detect(x$Org, "ventricle|cavity|vesicle")))
+  
+  shape_diffs <- tryCatch({
+  do.call(rbind, diffs_tab[groups_to_remove & !vol_diffs]) %>% filter(Type == "shape")
+}, error = function(e) {
+  message("Error in rbind or filter: Returning an empty tibble.")
+  tibble()
+})
+  
+  print(shape_diffs)
+
+  text_diffs <- do.call(rbind, diffs_tab[!(groups_to_remove | negative_spaces)])
+  
+  all_diffs <- do.call(rbind, all_df_tab) %>% filter(!((Type != "shape") & str_detect(Org, "ventricle|cavity|vesicle")))
+
+  print(all_diffs)
+  
+  list(
+    df = text_diffs, cols = if (length(text_diffs) > 0) combine_rows_to_vector(text_diffs) else character(),
+    shape_df = shape_diffs, shape_cols = if (length(shape_diffs) > 0) combine_rows_to_vector(shape_diffs) else character(),
+    all_df = all_diffs, all_cols = if (length(all_diffs) > 0) combine_rows_to_vector(all_diffs) else character()
+  )
+}
+
+# Performs hierarchairal clustering using increasing k and gets the best silhoutte score
+# clusters the with optimal k. 
+auto_cluster <- function(df, cor_matrix) {
+  
+  # Compute the distance matrix from the correlation matrix, use dissimiliarity instead of similarity
+  dist_matrix <- as.dist(1 - abs(cor_matrix))
+  #dist_matrix <- dist(cor_matrix)
+  
+  # dbscan of corr_matrix for feature outlier removal
+  dbscan_result <- dbscan(dist_matrix, eps = 0.3, minPts = 5)
+  
+  
+  # The features classified as noise (0) are outliers
+  outliers_dbscan <- which(dbscan_result$cluster == 0)
+  
+  print(outliers_dbscan)
+  #keep_features <- setdiff(1:ncol(cor_matrix), outliers_dbscan)
+  
+  
+  #cor_matrix <- cor_matrix[keep_features, keep_features]
+  
+  #dist_matrix <- as.dist(1 - abs(cor_matrix))
+  
+  # Perform hierarchical clustering
+  hclust_res <- hclust(dist_matrix)
+
+  # Convert to dendrogram
+  #dend <- as.dendrogram(hclust_res)
+  
+  #dend %>% plot
+  
+  k_num <- ifelse(ncol(df) < 50, ncol(df)-1, 50)
+    
+  sil_scores <- numeric(k_num)  # Try k = 2 to 10
+  for (k in 2:k_num) {
+    cluster_labels <- cutree(hclust_res, k_num)
+    sil_scores[k] <- mean(silhouette(cluster_labels, dist_matrix)[, 3])
+    }
+  # Find the best number of clusters
+  print(plot(1:k_num, sil_scores, type = "b", xlab = "Number of clusters", ylab = "Silhouette Score"))
+  
+  optimal_k <- which.max(sil_scores)
+  
+  
+  optimal_clusters <- cutree(hclust_res, k = optimal_k)
+
+  
+  return(list(dbs_clus=dbscan_result$cluster, sil_clus = optimal_clusters))
+    
+  }
+  
+
+
+plot_differences <- function(rad_df, cols){
+  
+  filtered_dataset <- rad_df[colnames(rad_df) %in% c(cols, "Genotype", "Background","HPE", "WEV", "vol")]
+  
+  #filtered_dataset <- arrange(transform(filtered_dataset, Background=ordered(Background,levels=c("C3H","C57BL6"))))
+  
+  #filtered_dataset <- arrange(transform(filtered_dataset, Genotype=ordered(Genotype,levels=c("WT","HET"))))
+  
+  rad_plots <- lapply(seq_along(filtered_dataset[,2:(length(names(filtered_dataset))-3)]), function(data) {
+  ggplot(filtered_dataset,aes(x=WEV,y=filtered_dataset[,2:(length(names(filtered_dataset))-3)][[data]],colour=interaction(Background, Genotype)))+
+    #geom_boxplot()+
+    geom_point()+
+    geom_smooth(method = "lm", level=0.999)+
+    #facet_grid(Background, scales = "free_x")+
+    facet_grid(~Background, labeller = back_labeller, scales = "free_x")+
+    
+    scale_color_manual(name="", labels=unlist(inter_names_v2), values=c("#F8766D","#FFA500","#00BFC4",'#C77CFF'))+
+                                                                                   #scale_x_discrete(labels=unlist(variable_names))+
+    
+    #scale_color_manual(name="", labels=c("non-HPE", "overt-HPE"), values=c("#F8766D","#00BFC4"))+
+    #                                                                               #scale_x_discrete(labels=unlist(variable_names))+
+    
+    ylab(expression("Radiomics Measurement Normalised to WEV"))+
+    ggtitle(names(filtered_dataset[,2:(length(names(filtered_dataset))-3)][[data]]))+
+    xlab(expression("Whole Embryo Volume (WEV) mm"^3))+
+    ggtitle(gsub("_", " ", names(filtered_dataset[,2:(length(names(filtered_dataset))-3)])[data]))+
+    theme(plot.subtitle=element_text(size=10, hjust=0.5),
+          strip.text.x = element_text(hjust = 0.5, size = 10), legend.position = "none",
+          title = element_text(size=10, hjust=0.5),
+          axis.title.x = element_text(size=12), 
+          axis.title.y = element_text(size=12))
+    #labs(tag = "B")
+})
+  
+  print(rad_plots)
+  
+}
+
+
+
+
+
+
+
+```
+
+
+
+```{r, fig.height=9, fig.width=11, warning=T, message=FALSE}
+#  fig.height=9, fig.width=11
+#3.5, 5.5
+#fig.height=14, fig.width=14
+#9, fig.width=10
+
+
+determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
+  
+  if (corr_removal){
+    
+    df_for_corr <- df %>% dplyr::select(is.numeric) %>% select(-WEV)
+    
+    cor_matrix <- cor(df_for_corr, method = "spearman")
+    
+    high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
+    
+    filtered_df <- df_for_corr[, -high_corr, drop=F]
+    
+    df <- df[colnames(df) %in% c(colnames(filtered_df), "Genotype", "Background", "HPE","WEV", "vol")]
+    
+  }
+  
+  library(reshape2)
+  library(catboost)
+  
+  fit_params <- list(iterations = 1000,
+                   loss_function = 'Logloss',
+                   task_type = 'CPU', verbose=100)
+  
+  
+  bin_levels <- levels(df[[test_effect]])
+  
+  df[[test_effect]] <- ifelse(df[[test_effect]] == bin_levels[1], 0, 1)
+  
+  df_train <- df[, sapply(df, is.numeric)] %>% dplyr::select(-all_of(test_effect)) %>% select(-WEV)
+  
+  # Create the test pool using the dynamically selected column
+  test_pool <- catboost::catboost.load_pool(df_train, label = df[[test_effect]])
+    
+  
+  
+  cat_model <- catboost.train(test_pool, params=fit_params)
+  
+  shp <- shapviz(cat_model, X_pred = test_pool, X = df_train)
+ 
+  p <- sv_importance(shp, kind="beeswarm")+
+    scale_color_gradient(
+    low = "blue", high = "red",
+    guide = guide_colorbar(
+      title.position = "left",  # Move title to the left of the legend
+      title.hjust = 0.5,  # Center the vertical title
+      barwidth = 0.5,  # Adjust width of color bar
+      barheight = 8  # Adjust height of color bar for better visibility
+    ),  # Ensure the color bar has ticks
+    labels = function(x) ifelse(x == 0, "Low", ifelse(x == 1, "High", ""))  # Rename labels
+  ) + theme(legend.title = element_text(angle = 90))
+  print(p)
+  
+  shap_values <- get_shap_values(shp)
+  shap_importance <- colMeans(abs(shap_values))  # Mean absolute SHAP per feature
+  
+  # Rank features by SHAP importance
+  feature_rank <- data.frame(Feature = colnames(df_train), Importance = shap_importance)
+  feature_rank <- feature_rank[order(-feature_rank$Importance), ]  # Sort descending
+  
+  # Define the feature count grid (1 to 29 features)
+  feature_counts <- seq(1, min(29, ncol(df_train)))  # Ensure max is within range
+  results <- data.frame(N_Features = integer(), Mean_Accuracy = numeric())
+  
+  # Train models with increasing numbers of features
+  for (n in feature_counts) {
+    print(paste("doing n: ",n ))
+    selected_features <- head(feature_rank$Feature, n)
+    x_selected <- df_train[, selected_features, drop = FALSE]  # Keep as dataframe
+    
+    # Cross-validation setup
+    fit_control <- trainControl(method = "LOOCV", number = 10, verboseIter = 500, classProbs = TRUE)  # 10-fold CV
+    # Train model using only selected features
+    model_cv <- train(x_selected, as.factor(make.names((df[[test_effect]]))), method = catboost.caret,
+                      tuneGrid = data.frame(depth = 6, learning_rate = 0.1, iterations = 1000,
+                                            l2_leaf_reg = 1e-3, rsm = 0.95, border_count = 64),
+                      trControl = fit_control, verbose=500)
+    
+    # Store mean accuracy across CV folds
+    mean_acc <- mean(model_cv$results$Accuracy)
+    results <- rbind(results, data.frame(N_Features = n, Mean_Accuracy = mean_acc))
+    }
+  
+  # Find best feature count
+  best_n <- results$N_Features[which.max(results$Mean_Accuracy)]
+  best_features <- head(feature_rank$Feature, best_n)
+  
+  # Train final model with best N features
+  x_best <- df_train[, best_features, drop = FALSE]
+  
+  final_test_pool <- catboost::catboost.load_pool(x_best, label = df[[test_effect]])
+  
+  final_model <- catboost.train(final_test_pool, params=fit_params)
+  
+  # Print best feature count and selected features
+  print(paste("Optimal number of features:", best_n))
+  
+  # Plot feature count vs mean accuracy
+  p<-ggplot(results, aes(x = N_Features, y = Mean_Accuracy)) +
+    geom_line() + geom_point() +
+    labs(title = "Feature Count vs Mean Accuracy", x = "Number of Features", y = "Mean Accuracy")
+  print(p)
+  shp <- shapviz(final_model, X_pred = final_test_pool, X = df_train)
+ 
+  p <- sv_importance(shp, kind="beeswarm")+
+    scale_color_gradient(
+    low = "blue", high = "red",
+    guide = guide_colorbar(
+      title.position = "left",  # Move title to the left of the legend
+      title.hjust = 0.5,  # Center the vertical title
+      barwidth = 0.5,  # Adjust width of color bar
+      barheight = 8  # Adjust height of color bar for better visibility
+    ),  # Ensure the color bar has ticks
+    labels = function(x) ifelse(x == 0, "Low", ifelse(x == 1, "High", ""))  # Rename labels
+  ) + theme(legend.title = element_text(angle = 90))
+  print(p)
+}
+
+plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked, corr_networks=F){
+  
+  #dist_matrix <- dist(cor_matrix)
+  dist_matrix <- as.dist(1 - abs(cor_matrix))
+  
+  # Apply agglomerative hierarchical clustering on the new distance matrix
+  hc <- hclust(dist_matrix)
+  
+  #method = "ward.D2"
+  
+  #breaks <- seq(-1, 1, length.out = 100)
+  breaks <- seq(0, 1, length.out = 100)
+  
+  colors <- colorRampPalette(brewer.pal(9, "YlOrRd"))(length(breaks))
+  
+  #colors <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(breaks))
+  
+  small_mat<- ifelse(ncol(cor_matrix)<70, T, F)
+  
+  xsmall_mat <- ifelse(ncol(cor_matrix)<30, T, F)
+  
+  vol_corr_as_anno <- ifelse(rownames(cor_matrix) %in% correlated_vol_feats, "Yes", "No")
+  
+  
+  ann_colors <- list()
+  
+  dbscan_levels <- levels(factor(clusters$dbs_clus))
+  
+  hca_levels <- levels(factor(clusters$sil_clus))
+    
+  # Use RColorBrewer's Set1 palette for DBSCAN
+  ann_colors$DBSCAN <- setNames(brewer.pal(length(dbscan_levels), "Set1"), dbscan_levels)
+  ann_colors$DBSCAN <- setNames(if (length(dbscan_levels) > 9) colorRampPalette(brewer.pal(9, "Set1"))(length(dbscan_levels)) else brewer.pal(length(dbscan_levels), "Set1"), dbscan_levels)
+
+  ann_colors$DBSCAN <- ann_colors$DBSCAN[!is.na(names(ann_colors$DBSCAN))]
+    
+  # Use the Dark2 palette for HCA Cutree
+  ann_colors$HCA.Cutree <- setNames(brewer.pal(length(hca_levels), "Set2"), hca_levels)
+  ann_colors$HCA.Cutree <- ann_colors$HCA.Cutree[!is.na(names(ann_colors$HCA.Cutree))]
+  
+  
+  
+  if (corr_networks){
+    
+    corr_network_levels <- levels(factor(clusters$corr_networks))
+    
+    ann_colors$Corr_network <- setNames(brewer.pal(length(corr_network_levels), "Set3"), corr_network_levels)
+    ann_colors$Corr_network <- ann_colors$Corr_network[!is.na(names(ann_colors$Corr_network))]
+    
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    row_annotation <- data.frame(
+      DBSCAN = factor(clusters$dbs_clus),
+      HCA.Cutree = factor(clusters$sil_clus),
+      Corr.Network = factor(clusters$corr_networks))
+    
+    
+    
+    
+  }
+  
+   else if (cor_checked){
+     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
+     colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    
+    
+    row_annotation <- data.frame(
+      DBSCAN = factor(clusters$dbs_clus),
+      HCA.Cutree = factor(clusters$sil_clus))
+    
+  } else if (!shape_plot){
+    
+    shape_corr_as_anno <- ifelse(rownames(cor_matrix) %in% correlated_shape_feats, "Yes", "No")
+    
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    
+    ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
+    
+    vol_corr_as_anno <- ifelse(rownames(cor_matrix) %in% correlated_vol_feats, "Yes", "No")
+    
+    
+    row_annotation <- data.frame(
+      Correlated.With.Volume = vol_corr_as_anno,
+      Correlated.With.Shape = shape_corr_as_anno,
+      DBSCAN = factor(clusters$dbs_clus),
+      HCA.Cutree = factor(clusters$sil_clus))
+    
+    ann_colors$Correlated.With.Shape <- c("Yes" = "blue", "No" = "gray")
+    ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
+    # Generate consistent colors using palettes for DBSCAN and HCA Cutree
+    
+  } else {
+    
+    # simplify names for shape features
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "original", "")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "original", "")
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "shape", "")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "shape", "")
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "  ", "")
+    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "  ", "")
+    
+    
+    ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
+    
+    vol_corr_as_anno <- ifelse(rownames(cor_matrix) %in% correlated_vol_feats, "Yes", "No")
+    
+    
+    row_annotation <- data.frame(
+    Correlated.With.Volume = vol_corr_as_anno,
+    DBSCAN = factor(clusters$dbs_clus),
+    HCA.Cutree = factor(clusters$sil_clus))
+    
+  }
+  
+  rownames(row_annotation) <- rownames(cor_matrix)
+  
+  col_fun <- colorRamp2(breaks, colors)
+  
+  # Create row annotation object
+  ha <- rowAnnotation(
+    df = row_annotation,
+    col = ann_colors)
+  
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(round(1 - abs(cor_matrix[i, j]), 2), x, y, gp = gpar(fontsize = 8, col = "black"))
+  }
+  
+  #cellwidth = 20, cellheight = 20, display_numbers = T, 
+  if (small_mat){
+    # p <- pheatmap(cor_matrix, clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean",
+    #             legend = T, annotation_colors = ann_colors,
+    #              show_rownames = T, show_colnames = F,
+    #              annotation_row =row_annotation, colors=colors, breaks = breaks)
+    # 
+    p <- Heatmap(
+  (1 - abs(cor_matrix)),
+  name = paste0("Dissimilarity (1 - |", "\u03C1", "|)"),
+  col = col_fun,
+  cell_fun = if (xsmall_mat) {
+    function(j, i, x, y, width, height, fill) {
+      grid.text(round(1 - abs(cor_matrix[i, j]), 2), x, y, gp = gpar(fontsize = 8, col = "black"))
+    }
+  } else {
+    NULL
+  },
+  #clustering_distance_rows = "euclidean",
+  #clustering_distance_columns = "euclidean",
+  cluster_rows = hc,
+  cluster_columns = hc,  # Custom column clusterin
+  show_row_names = TRUE,
+  show_column_names = FALSE,
+  row_names_side = "right",
+  column_names_side = NULL,
+  row_names_gp = gpar(fontsize = 10),
+  left_annotation = ha,
+  heatmap_legend_param = list(direction = "horizontal") # Ensures horizontal legend
+)
+  } else {
+    # p <- pheatmap(cor_matrix, clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean",
+    #               show_rownames = F, show_colnames = F, annotation_colors = ann_colors,
+    #              annotation_row =row_annotation, colors=colors, breaks = breaks, legend = T)
+     p <- Heatmap(
+  (1 - abs(cor_matrix)),
+  name = paste0("Dissimilarity (1 - |", "\u03C1", "|)"),
+  col = col_fun,
+  #clustering_distance_rows = "euclidean",
+  #clustering_distance_columns = "euclidean",
+  cluster_rows = hc,
+  cluster_columns = hc,
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  row_names_side = NULL,
+  column_names_side = NULL,
+  left_annotation = ha,
+  heatmap_legend_param = list(direction = "horizontal") # Ensures horizontal legend
+)
+  }
+  
+  #grid.text("Spearman's Coefficient", x = 0.9, y = 0.85, gp = gpar(fontsize = 12, fontface = "bold"))
+  
+  
+  draw(p, heatmap_legend_side = "bottom", padding = unit(c(4, 0.5, 0.5, 7), "cm"))
+}
+
+
+determine_cor_to_ex <- function(searchstr, df, drop_searchstr){
+  #stupid default r function stuff
+  if(missing(drop_searchstr)){drop_searchstr=T}
+  
+  cor_matrix <- cor(df, method = "spearman")
+  
+  features <- grep(searchstr, colnames(df), ignore.case = TRUE, value = TRUE)
+  cor_with <- which(colnames(df) %in% features)
+  correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= 0.9)
+  correlated_features <- colnames(df)[correlated_with_ind]
+  if (drop_searchstr) {correlated_features <-correlated_features[!grepl(searchstr, correlated_features)]}
+  return(correlated_features)
+    }
+
+
+check_cor <- function(df, cols, shape_plot){
+  
+  df <- df[colnames(df) %in% c(cols, "Genotype", "Background", "HPE","WEV", "vol")]
+  
+  df_orig <-df
+  
+  library(caret)
+  
+  
+  df <- df %>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
+
+  
+  cor_matrix <- cor(df, method = "spearman")
+
+  
+  correlated_vol_feats <- determine_cor_to_ex("Volume_", df)
+  
+  print("correlated vol feats")
+  print(correlated_vol_feats)
+  
+  
+  correlated_shape_feats <- determine_cor_to_ex("shape", df)
+  
+  print("correlated shape feats")
+  print(correlated_shape_feats)
+  
+  
+  if (ncol(df) < 3) {
+     df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
+    final_df <- df_orig[colnames(df_orig) %in% c(colnames(df))]
+    
+    return(final_df)
+    
+  }
+  
+  
+  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
+  
+  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=F) 
+  
+  df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
+
+  cor_matrix <- cor_matrix[!colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
+                         !colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
+                         drop = FALSE]
+  
+  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
+  
+  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T) 
+  
+  #drop corr
+  
+  
+  high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
+  
+  print("high corr")
+  
+  print(colnames(df[, high_corr]))
+  
+  filtered_df <- df[, -high_corr, drop=F]
+  
+  if (ncol(filtered_df) < 3){
+  
+    final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
+    
+    return(final_df)
+  }
+  
+  cor_matrix<-cor(filtered_df, method = "spearman", use = "pairwise.complete.obs")
+
+  optimal_clusters_aft <- auto_cluster(filtered_df, cor_matrix)
+  
+  #plot_cor(filtered_df, cor_matrix, optimal_clusters_aft, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T)
+  
+  #corr_matrix after removing potential correlated features
+  
+  
+  
+  final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
+  
+  return(final_df)
+  }
+
+
+determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_threshold = 0.9) {
+  library(ggraph)
+  library(ggrepel)
+  library(widyr)
+  cor_matrix <- cor(df, method = "spearman")
+  
+  # Identify features matching the search string
+  features <- grep(searchstr, colnames(df), ignore.case = TRUE, value = TRUE)
+  cor_with <- which(colnames(df) %in% features)
+  
+  # Identify highly correlated features
+  correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= cor_threshold)
+  correlated_features <- colnames(df)[correlated_with_ind]
+  
+  if (drop_searchstr) {
+    correlated_features <- correlated_features[!grepl(searchstr, correlated_features)]
+  }
+  
+  if (length(correlated_features) == 0) {
+    return(data.frame(Feature = character(0), Group = integer(0)))
+  }
+  
+  # Extract relevant part of the correlation matrix
+  sub_cor_matrix <- cor_matrix[correlated_features, correlated_features]
+  
+  sub_cor_matrix <- cor_matrix
+  
+  # Find feature pairs that meet the threshold
+  cor_pairs <- which(abs(sub_cor_matrix) >= cor_threshold, arr.ind = TRUE)
+  #cor_pairs <- which(upper.tri(cor_matrix), arr.ind = TRUE)
+  
+  # Create dataframe of feature pairs
+  cor_df <- data.frame(
+    Feature1 = rownames(sub_cor_matrix)[cor_pairs[, 1]],
+    Feature2 = colnames(sub_cor_matrix)[cor_pairs[, 2]]
+  ) |> unique()
+  
+  cor_df$weight <- sub_cor_matrix[cor_pairs]
+  
+  # Remove self-correlations
+  cor_df <- cor_df[cor_df$Feature1 != cor_df$Feature2, ]
+  
+  
+  if (nrow(cor_df) == 0) {
+    return(data.frame(Feature = correlated_features, Group = seq_along(correlated_features))) 
+  }
+  
+
+  
+  #test corr network from: https://www.tidytextmining.com/nasa.html?q=correlation%20ne#networks-of-keywords
+  cor_long <- as.data.frame(as.table(sub_cor_matrix)) %>%
+  dplyr::rename(Feature1 = Var1, Feature2 = Var2, correlation = Freq) %>%
+  dplyr::filter(Feature1 != Feature2) %>% # Remove self-correlations
+  filter(abs(correlation) > 0.9)
+  
+  g <- graph_from_data_frame(cor_long, directed=F)
+  
+  components <- components(g)
+  
+  
+  group_map <- setNames(components$membership, names(components$membership))
+  
+  # Match the row names of cor_mat with df and assign group values
+  group_assignment <- ifelse(rownames(cor_matrix) %in% names(components$membership), group_map[rownames(cor_matrix)], 0)
+  
+  # Convert to a named vector
+  names(group_assignment) <- rownames(cor_matrix)
+  
+  
+  
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "original", "")
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "shape", "")
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "__", "")
+  
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "original", "")
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "shape", "")
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "__", "")
+  
+  
+  g <- graph_from_data_frame(cor_long, directed=F) 
+  
+  E(g)$correlation <- cor_long$correlation
+  p<-ggraph(g, layout = "fr") +
+   geom_edge_link(aes(
+    edge_alpha = abs(E(g)$correlation),  # Use correlation from edge attributes
+    #edge_width = abs(E(g)$correlation),  # Use correlation from edge attributes
+    edge_colour = E(g)$correlation),  # Use correlation for edge color
+    show.legend = TRUE) +
+  geom_node_point(size = 4, alpha = 0.7) +
+  geom_node_text(aes(label = name), repel = TRUE,
+                 box.padding = unit(3, "lines"))+
+  theme_void()+
+    scale_edge_colour_gradient2(
+    low = "blue",  # Negative correlation (blue)
+    mid = "grey",  # Mid-point (neutral correlation)
+    high = "red",  # Positive correlation (red)
+    midpoint = 0   # Midpoint is 0 for neutral correlations
+  )
+  
+  print(p)
+  
+  
+  
+  
+  return(group_assignment)
+}
+
+
+get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
+  
+  colnames(rad_df) <- str_remove(colnames(rad_df), "wavelet_")
+  
+  diffs <- get_non_vol_diffs(fully_pene_feats, searchstr)
+  
+  # Shape analysis
+  # if (length(diffs$shape_cols) > 0) {
+  #   if (length(diffs$shape_cols) <= 20) {
+  #     print("HANDFUL OF SHAPE COLS FOUND")
+  #     plot_differences(rad_df, diffs$shape_cols)
+  #   }
+  #   
+  #   print(diffs$shape_df)
+  #   shape_reduced_df <- check_cor(rad_df, diffs$shape_cols, shape_plot=T)
+  #   
+  #   if (ncol(shape_reduced_df) > 0) {
+  #     if (ncol(shape_reduced_df) <= 20) {
+  #       print("HANDFUL OF NON-CORR SHAPE COLS FOUND")
+  #     }
+  #     
+  #     plot_differences(shape_reduced_df, diffs$shape_cols)
+  #     do_PCA(shape_reduced_df)
+  #     determine_feat_imp(shape_reduced_df, diffs$shape_cols, test_effect)
+  #   }
+  # }
+  # 
+  # # Text analysis
+  # if (length(diffs$cols) > 0) {
+  #   if (length(diffs$cols) <= 20) {
+  #     print("HANDFUL OF TEXT COLS FOUND")
+  #     plot_differences(rad_df, diffs$cols)
+  #   }
+  #   
+  #   text_reduced_df <- check_cor(rad_df, diffs$cols, shape_plot=F)
+  #   
+  #   if (ncol(text_reduced_df) > 0) {
+  #     if (ncol(text_reduced_df) <= 20) {
+  #       print("HANDFUL OF NON-CORR TEXT COLS FOUND")
+  #     }
+  #     #plot_differences(text_reduced_df, diffs$cols)
+  #     do_PCA(text_reduced_df)
+  #     determine_feat_imp(text_reduced_df, diffs$cols, test_effect)
+  #   }
+  # }
+  
+  # All differences analysis
+  if (length(diffs$all_cols) > 0) {
+    #str(diffs$all_cols)
+    
+    diffs_by_org <- diffs$all_df %>% split(.$Org)
+  
+    cols_by_org <- lapply(diffs_by_org, function(org_diffs) {combine_rows_to_vector(org_diffs)})
+  
+    corr_rem_by_org <- lapply(cols_by_org, function(org_cols){check_cor(rad_df, org_cols, shape_plot=F)}) 
+    
+    
+    all_reduced_df <- bind_cols(corr_rem_by_org)
+    
+    all_reduced_df <- rad_df[colnames(rad_df) %in% c(colnames(all_reduced_df), "Genotype", "Background", "HPE", "WEV", "vol")]
+    
+    df_for_corr <- all_reduced_df%>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
+    
+    cor_matrix <- cor(df_for_corr, method = "spearman")
+    
+    optimal_clusters <- auto_cluster(df_for_corr, cor_matrix)
+    
+    
+    correlated_vol_feats <- determine_cor_groups("Volume_", df_for_corr, drop_searchstr = F)
+    
+  
+    print("correlated vol feats - inter-organ")
+    
+    print(correlated_vol_feats)
+    print(optimal_clusters$dbs_clus)
+    
+    
+    correlated_shape_feats <- determine_cor_groups("shape", df_for_corr, drop_searchstr = F)
+    
+    print("correlated shape feats - inter-organ")
+    print(correlated_shape_feats)
+    
+    print(optimal_clusters)
+    optimal_clusters$corr_networks <- correlated_vol_feats
+    
+    
+    plot_cor(all_reduced_df, cor_matrix, optimal_clusters, correlated_vol_feats, correlated_shape_feats, shape_plot=F, cor_checked=T, corr_networks=T)
+    
+    #reduced_df_for_ml <- check_cor(all_reduced_df, colnames(all_reduced_df))
+    
+    
+    if (ncol(all_reduced_df) > 0) {
+      do_PCA(all_reduced_df)
+      
+      if (ncol(all_reduced_df) < 50) {plot_differences(all_reduced_df, diffs$all_cols)}
+      
+      write.csv(all_reduced_df, paste(test_effect, "_all_output.csv"))
+      determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
+    }
+  }
+}
+
+
+
+do_PCA <- function(df){
+  df <- df %>% dplyr::select(where(is.numeric))
+  
+  
+  pca_result <- prcomp(df, center = TRUE, scale. = TRUE)
+  loadings_pc1 <- abs(pca_result$rotation[, 1])  # Take absolute values
+  top_features <- sort(loadings_pc1, decreasing = TRUE)  # Sort by contribution
+print(barplot(sort(abs(pca_result$rotation[,1]), decreasing = TRUE), las = 2, main = "PC1 Loadings"))
+
+df_rot <-t(df)
+
+dbscan_result <- dbscan(df_rot,  eps = 0.3, minPts = 5)
+
+print(dbscan_result)
+
+
+p<- fviz_cluster(dbscan_result, df_rot, geom = "point", pointsize = 2)
+print(p)
+
+}
+
+
+get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype")
+
+
+
+
+
+```
+
+
+```{r, fig.height=15, fig.width=15}
+
+get_and_plots_differences(rad_info, back_fully_pene_feats, "Background")
+
+```
+
+
+```{r, fig.height=7, fig.width=11}
+
+HPE_sign <- rad_info[colnames(rad_info) %in% c(colnames(significant_feats), "Genotype", "Background", "WEV", "vol")]
+
+
+HPE_sign$HPE <- factor(ifelse(HPE_sign$vol %in% HPE_bros, 1, 0))
+
+HPE_significant_feats <- significant_feats %>% select(-vol)
+
+
+
+get_and_plots_differences(HPE_sign, HPE_significant_feats, "HPE")
+
+```
+
+
+```{r}
+#int_shape_diffs_v2 <- get_non_vol_shape_diffs(int_fully_pene_feats_v2)
+#int_shape_diffs_v2
+
+
+# plot features
+
+label_wrap_custom <- function(variable) {
+  sapply(variable, function(x) {
+    if (nchar(x) > 25) {
+      paste(strwrap(x, width = 25), collapse = "\n")
+    } else {
+      x
+    }
+  })
+}
+
+
+
+plot_volumes_only <-  function(rad_df){
+  
+  vol_cols <- colnames(rad_df)[grep("VoxelVolume", colnames(rad_df))]
+  
+  filtered_dataset <- rad_df[colnames(rad_df) %in% c(vol_cols, "Genotype", "Background", "WEV", "vol")]
+  
+  #filtered_dataset <- arrange(transform(filtered_dataset, Background=ordered(Background,levels=c("C3H","C57BL6"))))
+  
+  #filtered_dataset <- arrange(transform(filtered_dataset, Genotype=ordered(Genotype,levels=c("WT","HET"))))
+  
+  rad_plots <- lapply(seq_along(filtered_dataset[,2:(length(names(filtered_dataset))-3)]), function(data) {
+  ggplot(filtered_dataset,aes(x=WEV,y=filtered_dataset[,2:(length(names(filtered_dataset))-3)][[data]],colour=interaction(Background, Genotype)))+
+    #geom_boxplot()+
+    geom_point()+
+    geom_smooth(method = "lm", level=0.999)+
+    #facet_grid(Background, scales = "free_x")+
+    facet_grid(~Background, labeller = back_labeller, scales = "free_x")+
+    
+    scale_color_manual(name="", labels=unlist(inter_names_v2), values=c("#F8766D","#FFA500","#00BFC4",'#C77CFF'))+
+                                                                                   #scale_x_discrete(labels=unlist(variable_names))+
+    
+    #scale_color_manual(name="", labels=c("non-HPE", "overt-HPE"), values=c("#F8766D","#00BFC4"))+
+    #                                                                               #scale_x_discrete(labels=unlist(variable_names))+
+    
+    ylab(expression("Radiomics Measurement Normalised to WEV"))+
+    ggtitle(names(filtered_dataset[,2:(length(names(filtered_dataset))-3)][[data]]))+
+    xlab(expression("Whole Embryo Volume (WEV) mm"^3))+
+    guides(color = guide_legend(ncol = 2))+
+    ggtitle(gsub("_", " ", names(filtered_dataset[,2:(length(names(filtered_dataset))-3)])[data]))+
+    theme(plot.subtitle=element_text(size=10, hjust=0.5),
+          strip.text.x = element_text(hjust = 0.5, size = 10), legend.position = "right",
+          title = element_text(size=10, hjust=0.5),
+          axis.title.x = element_text(size=12), 
+          axis.title.y = element_text(size=12))
+    #labs(tag = "B")
+})
+  
+  rad_plots
+  
+}
+
+
+plot_shape_differences(rad_info, geno_shape_diffs_v1$cols)
+
+plot_volumes_only(rad_info)
+
+```
+
+```{r, fig.height=3.5, fig.width=5}
+plot_shape_differences(rad_info_v2, geno_shape_diffs_v2$cols)
+plot_volumes_only(rad_info_v2)
+
+```
+
+
+```{r, fig.height=4, fig.width=5.5}
+plot_shape_differences(rad_info, back_shape_diffs_v1$cols)
+
+```
+
+
+```{r, fig.height=4, fig.width=5.5}
+plot_shape_differences(rad_info_v2, back_shape_diffs_v2$cols)
+```
+
+
+```{r}
+
+cluster_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+  colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  complete_df <- rbind(complete_df, cluster_df)
+  
+  org_counts <- table(complete_df$Org)
+  org_proportions <- prop.table(org_counts)
+  
+  # Count and proportion of interactions
+  interaction_counts <- table(cluster_df$Filter, cluster_df$Type, cluster_df$Org)
+  interaction_proportions <- prop.table(interaction_counts)
+  
+  # Convert interaction_proportions to a data frame
+  interaction_df <- as.data.frame.table(interaction_proportions)
+  colnames(interaction_df) <- c("Filter", "Type", "Org", "Proportion")
+
+
+
+significant_feats_means <- significant_feats %>% filter(vol %in% sev_HPE_bros) %>% select_if(is.numeric) %>% colMeans()
+  
+cluster_df <- create_cluster_df(significant_feats_means)
+
+cluster_df$VolMean <- significant_feats_means
+
+pos_or_neg <- ifelse(significant_feats_means < 1, "Negative", "Positive")
+
+
+cluster_df$Correlation <- pos_or_neg
+  
+# Create the plot for this iteration and store it in the list
+
+org_type_levels <- c("glrlm.brain lateral ventricle","firstorder.forebrain anteroventral region", "glcm.forebrain anteroventral region","gldm.forebrain anteroventral region","glrlm.forebrain anteroventral region","glszm.forebrain anteroventral region", "ngtdm.forebrain anteroventral region",    "shape.forebrain anteroventral region","gldm.midbrain","glrlm.midbrain", "ngtdm.midbrain", "firstorder.vomeronasal cavity")
+
+cluster_df$Org_Type <- factor(interaction(cluster_df$Type, cluster_df$Org), levels=org_type_levels)
+
+split_by_corr <- split(cluster_df, cluster_df$Correlation)
+
+my_palette <- hcl.colors(7, palette = "Dark3")
+
+type_colors <- setNames(my_palette, c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+
+
+
+
+ggplot(mapping=aes(x = Type, y = log2(VolMean), col=Correlation)) +
+  #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+  geom_boxplot(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75)) +
+  #geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+
+  geom_boxplot(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+  #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+  labs(title = "Statistically Significant Features in Mild and Severe HPE embryos", x = "Feature Type", 
+       y = expression("Log"[2] * "(Mean Measurement Ratio Between HPE and Non-HPE embryos)"), color = "Association of Feature") +
+  theme_minimal()+
+  facet_wrap(~Org, scales = "fixed", nrow = 1)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
+  #scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8)) +
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2), NA, FALSE)) +
+  #cale_color_manual(values = c("blue", "red"))+
+  scale_y_continuous(limits=c(-2,2))+
+  scale_color_manual(values = c("blue", "red"))+
+  #geom_segment(aes(x = "Org1_TypeB", xend = "Org2_TypeA", y = -Inf, yend = Inf), linetype = "dashed") 
+  #scale_color_manual(values = type_colors)
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2)&(Org == 'forebrain anteroventral region'), NA, FALSE))+
+  stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col="blue", vjust = 2)+
+  stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col="red", vjust = -1)
+
+
+
+
+
+
+
+
+
+plot_list <- list()
+complete_df <- data.frame(matrix(ncol=4, nrow=0))
+colnames(complete_df) <- c("Filter", "Type", "Stat", "Org")
+# Iterate over filtered_classes from 1 to 7
+for (i in 1:7) {
+  # Filter the classes
+  filtered_classes <- sort(classes[classes == i])
+  
+  # Print the information about the filtered classes
+  message(paste(length(filtered_classes), " of ", length(classes), " features (", round((length(filtered_classes) / length(classes)) * 100, 2), "%)", sep = ""))
+  
+  # Split the names
+  split_names <- strsplit(names(filtered_classes), "_")
+  split_names <- lapply(split_names, function(x) {
+    if ("wavelet" %in% x) {x <- x[c(-1)]}
+    return(x)})
+  
+  
+  split_names <- lapply(split_names, merge_after_third)
+  
+  # Create the cluster_df
+  cluster_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+  colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  complete_df <- rbind(complete_df, cluster_df)
+  
+  # Count and proportion of occurrences for the "Org" column
+  org_counts <- table(complete_df$Org)
+  org_proportions <- prop.table(org_counts)
+  
+  # Count and proportion of interactions
+  interaction_counts <- table(cluster_df$Filter, cluster_df$Type, cluster_df$Org)
+  interaction_proportions <- prop.table(interaction_counts)
+  
+  # Convert interaction_proportions to a data frame
+  interaction_df <- as.data.frame.table(interaction_proportions)
+  colnames(interaction_df) <- c("Filter", "Type", "Org", "Proportion")
+  
+  # Create the plot for this iteration and store it in the list
+  plot_list[[i]] <- ggplot(interaction_df, aes(x = Filter, y = Proportion, fill = Type)) +
+    geom_bar(stat = "identity", position = "stack") +
+    labs(title = paste("Proportions by Filter and Type (Cluster =", i, ")", sep = " "), x = "Filter", y = "Proportion", fill = "Type") +
+    facet_wrap(~Org, scales = "fixed", nrow = 2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+}
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+all_info <- rad_info
+
+rad_info <- rad_info %>% filter(Genotype=="WT", Background == "C3H")
+
+numbers <- unique(sub(".*__", "", names(rad_info)[-1]))
+
+# Create a list to store the split datasets
+split_datasets <- list()
+
+# Loop through each number and subset the columns based on the number
+for (num in numbers) {
+  cols <- grep(paste0("__", num, "$"), names(rad_info))
+  split_datasets[[num]] <- rad_info[, c(1, cols)]
+}
+
+rad_info_matrix <- data.frame(cbind(split_datasets$`1`, split_datasets$`3`)) %>% select_if(is.numeric) %>% na.omit() %>% as.matrix()
+
+# , split_datasets$`17`, split_datasets$`18`
+
+# Calculate the correlation matrix using Pearson coefficient
+cor_matrix <- cor(rad_info_matrix, method = "pearson")
+
+# Convert correlation to distance
+dist_matrix <- as.dist(1 - cor_matrix)
+
+
+consensus_obj <- ConsensusClusterPlus(
+  dist_matrix,
+  distance = "pearson",
+  maxK = 10,  # Maximum number of clusters to consider
+  reps = 50,  # Number of resampling iterations - turn up if needed
+  pItem = 0.8,  # Proportion of items to sample on each iteration
+  pFeature = 1,  # Proportion of features to sample on each iteration
+  clusterAlg = "hc",
+  finalLinkage = "ward.D",# Use Ward's algorithm
+  innerLinkage = "ward.D",# Use Ward's algorithm
+  verbose= T,
+  plot = TRUE  # Plot the consensus clustering results
+)
+
+```
+
+
+```{r}
+classes <- consensus_obj[[7]]$consensusClass
+# Use filter on the extracted data frame or tibble
+filtered_classes <- sort(classes[classes==1])
+
+
+paste(length(filtered_classes), " of ", length(classes), " features (", round((length(filtered_classes)/length(classes))*100,2), "%)", sep="")
+
+```
+
+```{r }
+plot_list <- list()
+
+
+complete_df <- data.frame(matrix(ncol=4, nrow=0))
+colnames(complete_df) <- c("Filter", "Type", "Stat", "Org")
+# Iterate over filtered_classes from 1 to 7
+for (i in 1:7) {
+  # Filter the classes
+  filtered_classes <- sort(classes[classes == i])
+  
+  # Print the information about the filtered classes
+  message(paste(length(filtered_classes), " of ", length(classes), " features (", round((length(filtered_classes) / length(classes)) * 100, 2), "%)", sep = ""))
+  
+  # Split the names
+  split_names <- strsplit(names(filtered_classes), "_")
+  split_names <- sapply(split_names, function(x) if (length(x) == 6) x[c(-1, -5)] else x[-4])
+  
+  # Create the cluster_df
+  cluster_df <- data.frame(t(split_names))
+  
+  colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  complete_df <- rbind(complete_df, cluster_df)
+  
+  # Count and proportion of occurrences for the "Org" column
+  org_counts <- table(cluster_df$Org)
+  org_proportions <- prop.table(org_counts)
+  
+  # Count and proportion of interactions
+  interaction_counts <- table(cluster_df$Filter, cluster_df$Type, cluster_df$Org)
+  interaction_proportions <- prop.table(interaction_counts)
+  
+  # Convert interaction_proportions to a data frame
+  interaction_df <- as.data.frame.table(interaction_proportions)
+  colnames(interaction_df) <- c("Filter", "Type", "Org", "Proportion")
+  
+  # Create the plot for this iteration and store it in the list
+  plot_list[[i]] <- ggplot(interaction_df, aes(x = Filter, y = Proportion, fill = Type)) +
+    geom_bar(stat = "identity", position = "stack") +
+    labs(title = paste("Proportions by Filter and Type (Cluster =", i, ")", sep = " "), x = "Filter", y = "Proportion", fill = "Type") +
+    facet_wrap(~Org, scales = "fixed", nrow = 1) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+}
+
+# Print the plots
+for (i in 1:7) {
+  print(plot_list[[i]])
+}
+
+```
+# all feats - non clustered
+```{r, fig.width=10}
+  
+# Count and proportion of interactions
+interaction_counts <- table(complete_df$Filter, complete_df$Type, complete_df$Org)
+interaction_proportions <- prop.table(interaction_counts)
+  
+# Convert interaction_proportions to a data frame
+interaction_df <- as.data.frame.table(interaction_proportions)
+colnames(interaction_df) <- c("Filter", "Type", "Org", "Proportion")
+  
+# Create the plot for this iteration and store it in the list
+ggplot(interaction_df, aes(x = Filter, y = Proportion, fill = Type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = paste("Proportions by Filter and Type (all_clusters)", sep = " "), x = "Filter", y = "Proportion", fill = "Type") +
+  facet_wrap(~Org, scales = "fixed", nrow = 1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+##Significant feats only
+
+```{r }
+#setting up dataset
+
+
+
+
+
+```
+
+```{r}
+
+
+
+
+filtered_dataset <- rad_info[, colnames(rad_info) %in% colnames(significant_feats)]
+
+
+weird_dataset <- significant_feats[, !(colnames(significant_feats) %in% colnames(rad_info))]
+
+filtered_dataset$vol <- rad_info$vol
+
+
+filtered_dataset <- merge(filtered_dataset, staging_info)
+
+filtered_dataset
+
+```
+
+
+```{r}
+filtered_matrix_s <- filtered_dataset %>% select_if(is.numeric) %>% dplyr::select(-WEV) %>% remove_constant() %>% as.matrix()
+
+cor_matrix_sf_s <- cor(filtered_matrix_s, method = "pearson")
+
+# Convert correlation to distance
+dist_matrix_sf_s <- as.dist(1 - cor_matrix_sf_s)
+
+consensus_obj_v3 <- ConsensusClusterPlus(
+  dist_matrix_sf_s,
+  distance = "pearson",
+  maxK = 10,  # Maximum number of clusters to consider
+  reps = 50,  # Number of resampling iterations
+  pItem = 0.8,  # Proportion of items to sample on each iteration
+  pFeature = 1,  # Proportion of features to sample on each iteration
+  clusterAlg = "hc",
+  finalLinkage = "ward.D",# Use Ward's algorithm
+  innerLinkage = "ward.D",# Use Ward's algorithm
+  verbose= F,
+  plot = TRUE  # Plot the consensus clustering results
+)
+```
+
+```{r}
+classes <- consensus_obj_v3[[7]]$consensusClass
+# Use filter on the extracted data frame or tibble
+filtered_classes <- sort(classes[classes==1])
+
+
+paste(length(filtered_classes), " of ", length(classes), " features (", round((length(filtered_classes)/length(classes))*100,2), "%)", sep="")
+
+```
+
+```{r fig.width=10, fig.height=6}
+# Define a function to merge elements after the third element
+merge_after_third <- function(vec) {
+  vec[4] <- paste(vec[4:length(vec)], collapse = " ")
+  vec <- vec[1:4]
+  return(vec)
+}
+
+plot_list <- list()
+complete_df <- data.frame(matrix(ncol=4, nrow=0))
+colnames(complete_df) <- c("Filter", "Type", "Stat", "Org")
+# Iterate over filtered_classes from 1 to 7
+for (i in 1:7) {
+  # Filter the classes
+  filtered_classes <- sort(classes[classes == i])
+  
+  # Print the information about the filtered classes
+  message(paste(length(filtered_classes), " of ", length(classes), " features (", round((length(filtered_classes) / length(classes)) * 100, 2), "%)", sep = ""))
+  
+  # Split the names
+  split_names <- strsplit(names(filtered_classes), "_")
+  split_names <- lapply(split_names, function(x) {
+    if ("wavelet" %in% x) {x <- x[c(-1)]}
+    return(x)})
+  
+  
+  split_names <- lapply(split_names, merge_after_third)
+  
+  # Create the cluster_df
+  cluster_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+  colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  complete_df <- rbind(complete_df, cluster_df)
+  
+  # Count and proportion of occurrences for the "Org" column
+  org_counts <- table(complete_df$Org)
+  org_proportions <- prop.table(org_counts)
+  
+  # Count and proportion of interactions
+  interaction_counts <- table(cluster_df$Filter, cluster_df$Type, cluster_df$Org)
+  interaction_proportions <- prop.table(interaction_counts)
+  
+  # Convert interaction_proportions to a data frame
+  interaction_df <- as.data.frame.table(interaction_proportions)
+  colnames(interaction_df) <- c("Filter", "Type", "Org", "Proportion")
+  
+  # Create the plot for this iteration and store it in the list
+  plot_list[[i]] <- ggplot(interaction_df, aes(x = Filter, y = Proportion, fill = Type)) +
+    geom_bar(stat = "identity", position = "stack") +
+    labs(title = paste("Proportions by Filter and Type (Cluster =", i, ")", sep = " "), x = "Filter", y = "Proportion", fill = "Type") +
+    facet_wrap(~Org, scales = "fixed", nrow = 2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+}
+
+# Print the plots
+for (i in 1:7) {
+  print(plot_list[[i]])
+}
+
+```
+
+
+```{r, fig.width=12, fig.height=8}
+  
+# Count and proportion of interactions
+interaction_counts <- table(complete_df$Filter, complete_df$Type, complete_df$Stat, complete_df$Org)
+interaction_proportions <- prop.table(interaction_counts)
+  
+# Convert interaction_proportions to a data frame
+interaction_df <- as.data.frame.table(interaction_counts)
+colnames(interaction_df) <- c("Filter", "Type", "Stat", "Org", "Proportion")
+
+  
+# Create the plot for this iteration and store it in the list
+ggplot(interaction_df, aes(x = Type, y = Proportion, fill = Filter)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = paste("Features Significant in both mild and severe HPE embryos", sep = " "), x = "Statistic", y = "Frequency", fill = "Type") +
+  facet_wrap(~Org, scales = "fixed", nrow = 2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+
+```{r}
+
+all_feats_use <- all_feats %>% filter(vol %in% sev_HPE_bros)%>% select_if(is.numeric)
+
+all_feats_use <- all_feats_use[,!(colnames(all_feats_use) %in% c(cols_outside_range, cols_outside_range2))]
+
+all_means_vol <-all_feats_use %>% colMeans()
+
+
+split_names <- strsplit(names(all_feats_use), "_")
+
+split_names <- lapply(split_names, function(x) {
+    if ("wavelet" %in% x) {x <- x[c(-1)]}
+    return(x)})
+
+split_names <- lapply(split_names, merge_after_third)
+  
+  # Create the cluster_df
+all_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+
+colnames(all_df) <- c("Filter", "Type", "Stat", "Org")
+
+all_df$VolMean <- all_means_vol
+
+
+pos_or_neg <- "Not Significant"
+
+all_df$Correlation <- pos_or_neg
+
+all_df
+
+#all_df <- all_df %>% filter(Org=="forebrain anteroventral region")
+
+```
+
+
+```{r, fig.width=8, fig.height=6}
+# get mean_vol_ratio across HPE bryos
+
+significant_feats_means <- significant_feats %>% filter(vol %in% sev_HPE_bros) %>% select_if(is.numeric) %>% colMeans()
+  
+
+split_names <- strsplit(names(significant_feats_means), "_")
+
+split_names <- lapply(split_names, function(x) {
+    if ("wavelet" %in% x) {x <- x[c(-1)]}
+    return(x)})
+
+split_names <- lapply(split_names, merge_after_third)
+  
+  # Create the cluster_df
+cluster_df <- data.frame(matrix(unlist(split_names), nrow=length(split_names), byrow=TRUE))
+colnames(cluster_df) <- c("Filter", "Type", "Stat", "Org")
+  
+
+cluster_df$VolMean <- significant_feats_means
+pos_or_neg <- ifelse(significant_feats_means < 1, "Negative", "Positive")
+
+
+
+
+cluster_df$Correlation <- pos_or_neg
+  
+# Create the plot for this iteration and store it in the list
+
+org_type_levels <- c("glrlm.brain lateral ventricle","firstorder.forebrain anteroventral region", "glcm.forebrain anteroventral region","gldm.forebrain anteroventral region","glrlm.forebrain anteroventral region","glszm.forebrain anteroventral region", "ngtdm.forebrain anteroventral region",    "shape.forebrain anteroventral region","gldm.midbrain","glrlm.midbrain", "ngtdm.midbrain", "firstorder.vomeronasal cavity")
+
+cluster_df$Org_Type <- factor(interaction(cluster_df$Type, cluster_df$Org), levels=org_type_levels)
+
+split_by_corr <- split(cluster_df, cluster_df$Correlation)
+
+my_palette <- hcl.colors(7, palette = "Dark3")
+
+type_colors <- setNames(my_palette, c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+
+
+
+
+ggplot(mapping=aes(x = Type, y = log2(VolMean), col=Correlation)) +
+  #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+  geom_boxplot(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75)) +
+  #geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+
+  geom_boxplot(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+  #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+  labs(title = "Statistically Significant Features in Mild and Severe HPE embryos", x = "Feature Type", 
+       y = expression("Log"[2] * "(Mean Measurement Ratio Between HPE and Non-HPE embryos)"), color = "Association of Feature") +
+  theme_minimal()+
+  facet_wrap(~Org, scales = "fixed", nrow = 1)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
+  #scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8)) +
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2), NA, FALSE)) +
+  #cale_color_manual(values = c("blue", "red"))+
+  scale_y_continuous(limits=c(-2,2))+
+  scale_color_manual(values = c("blue", "red"))+
+  #geom_segment(aes(x = "Org1_TypeB", xend = "Org2_TypeA", y = -Inf, yend = Inf), linetype = "dashed") 
+  #scale_color_manual(values = type_colors)
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2)&(Org == 'forebrain anteroventral region'), NA, FALSE))+
+  stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col="blue", vjust = 2)+
+  stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col="red", vjust = -1)
+  
+  
+  #expand_limits(y = c(0, 8.5)) 
+
+
+
+```
+
+
+
+```{r}
+
+test_all_info <- all_info %>% dplyr::select(where(is.numeric))
+
+all_info_df <- create_cluster_df(test_all_info)
+
+all_info_df$Org <- mapping$label_name[match(as.numeric(all_info_df$Org), mapping$label)]
+
+
+all_info_df <- na.omit(all_info_df)
+
+
+all_info_df$Org <- gsub("_", " ", all_info_df$Org)
+
+
+complete_df_counts <- table(complete_df$Filter, complete_df$Type, complete_df$Org, useNA = "ifany") %>% as.data.frame()
+
+
+
+interaction_counts_all <- table(all_info_df$Filter, all_info_df$Type, all_info_df$Org)
+
+interaction_counts_test <- table(all_info_df$Filter, all_info_df$Org)
+
+interaction_counts_all <- data.frame(interaction_counts_all)
+
+colnames(interaction_counts_all) <- c("Filter", "Type", "Org", "Total")
+
+colnames(complete_df_counts) <- c("Filter", "Type", "Org", "Freq")
+
+
+counts_table <- merge(interaction_counts_all, complete_df_counts, all.x=T, all.y=T, by=c("Filter", "Type","Org"))
+
+counts_table[is.na(counts_table)] <- 0
+
+
+# correct for size factors:
+
+# get total cell counts and divide by global mean
+#totals <- colSums(select_if(interaction_counts, is.numeric)) 
+
+#size_factors <- interaction_counts_all$Freq / mean(interaction_counts_all$Freq)
+
+#cont_table_xtabs <- xtabs(Frequency ~ Cell_Type + Genotype, data = cell_counts_long_v2)
+
+# just replaces the data with the normalised data
+#dataset[2:9] <- dataset[2:9]/size_factors[col(dataset[2:9])]
+counts_table
+all_info_df
+
+```
+
+
+```{r}
+
+counts_table <- counts_table %>% mutate(Prop=Freq/Total)
+
+counts_table <- counts_table[complete.cases(counts_table), ]
+
+#kruskal.test(Prop ~ Org, data = counts_table)
+
+test <- counts_table %>% filter(Org=='forebrain anteroventral region')
+
+model <-aov(Prop ~ Filter*Type, data = test)
+
+anova(model)
+
+# Perform the post-hoc test
+#posthoc <- glht(model, linfct = mcp(`Type:Filter` = "Tukey"))
+
+# Get compact letter display
+#cld(posthoc)
+test <- test %>% mutate(Non_Sign_Freq = Total-Freq)
+
+
+# Loop over each type and perform Fisher's exact test
+sign_table <- xtabs(Freq ~ Type, data = test)
+
+non_sign_table <- xtabs(Non_Sign_Freq ~ Type, data = test)
+
+contingency_table <- rbind(sign_table, non_sign_table)
+
+contingency_table
+
+
+proportions <- xtabs(Prop ~ Filter + Type, data = test)
+
+
+
+results <- apply(proportions, 2, function(col) {
+  binom.test(sum(col > 0), length(col), p=0.05, alternative="greater")
+})
+
+results
+
+p_values <- sapply(results, function(x) x$p.value)
+p_values
+
+fisher_result <- fisher.test(contingency_table)
+
+
+fisher_result
+
+p_values <- sapply(fisher_results, function(x) x$p.value)
+p_values
+```
+
+
+
+```{r, fig.height=10, fig.width=14}
+
+
+# compute mean and standard error of the mean by subgroup
+summary_stat <- summarySE(counts_table,
+  measurevar = "Prop",
+  groupvars = c("Type", "Org")
+)
+
+# plot mean and standard error of the mean
+ggplot(
+  subset(summary_stat, !is.na(Type)), # remove NA level for Type
+  aes(x = Org, y = Prop, colour = Type, fill=Type)
+) +
+  geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), # add error bars
+    width = 0.1 # width of error bars
+  ) +
+  geom_col() +
+  labs(y = "Proportion of Features")+
+  facet_wrap(~Type, ncol = 2)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+
+
+```
+
+
+```{r}
+
+model2 <-aov(Prop ~ Filter*Type, data = counts_table)
+
+summary(model2)
+
+#test <- TukeyHSD(model2, which = "Filter:Type")
+
+# only type is significant
+# Perform the post-hoc test
+
+model3 <- aov(Prop ~ Type, data = counts_table)
+posthoc
+posthoc <- glht(model3, linfct = mcp(Type="Tukey"))
+
+# Get compact letter display
+cld(posthoc)
+
+
+```
+
+
+
+```{r fig.width=30}
+
+model4 <- aov(Prop ~ Org*Type, data = counts_table)
+
+summary(model4)
+
+test <- TukeyHSD(model4, which = "Org:Type")
+
+#library(effects)
+
+#plot(allEffects(test))
+
+
+library(Rmisc)
+
+# compute mean and standard error of the mean by subgroup
+summary_stat <- summarySE(counts_table,
+  measurevar = "Prop",
+  groupvars = c("Org", "Type")
+)
+
+# plot mean and standard error of the mean
+ggplot(
+  subset(summary_stat, !is.na(Type)), # remove NA level for Type
+  aes(x = Org, y = Prop, colour = Type)
+) +
+  geom_errorbar(aes(ymin = Prop - se, ymax = Prop + se), # add error bars
+    width = 0.1 # width of error bars
+  ) +
+  geom_point() +
+  labs(y = "Mean of body mass (g)")
+
+
+
+with(
+  counts_table,
+  interaction.plot(Org, Type, Prop)
+)
+
+library(multcompView)
+
+
+# Assuming test is your Tukey's HSD test object
+cld_results <- multcompLetters(test)
+
+# Print the compact letter display
+print(cld_results)
+```
