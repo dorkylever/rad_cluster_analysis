@@ -1,0 +1,191 @@
+label,label_name,term,notes,organ_system,organ_system_name,no_analysis,
+1,forebrain_anteroventral_region,,,EMAPA:16469,nervous system,,
+3,forebrain,16895,,EMAPA:16469,nervous system,,
+4,forebrain_between_lateral_ventricles,,,EMAPA:16469,nervous system,,
+17,brain_lateral_ventricle,16914,,EMAPA:16469,nervous system,,
+18,brain_third_ventricle,16900,,EMAPA:16469,nervous system,,
+19,brain_mesencephalic_vesicle,17795,,EMAPA:16469,nervous system,,
+20,brain_fourth_ventricle,16917,,EMAPA:16469,nervous system,,
+21,cerebellar_primordium,17787,,EMAPA:16469,nervous system,,
+23,midbrain,16974,,EMAPA:16469,nervous system,,
+24,pons,17563,,EMAPA:16469,nervous system,,
+25,medulla_oblongata,17550,,EMAPA:16469,nervous system,,
+26,retina_and_other_eye_tissues,NA,,EMAPA:16192,sensory organ system,,
+27,lens_of_the_eye,17838,,EMAPA:16192,sensory organ system,,
+29,whiskers_and_tactile_follicles,17529,,EMAPA:17524,integumental system,,TRUE
+30,cochlea,17597,,EMAPA:16192,sensory organ system,,TRUE
+31,semicircular_canal,32832,,EMAPA:16192,sensory organ system,,TRUE
+32,endolymphatic_ducts,18580,,EMAPA:16192,sensory organ system,,TRUE
+33,sublingual_duct,18809,,EMAPA:16246,alimentary system,,TRUE
+34,submandibular_duct,35833,,EMAPA:16246,alimentary system,,TRUE
+35,submandibular_gland,18812,,EMAPA:16246,alimentary system,,TRUE
+36,Meckel_s_cartilage,17635,,EMAPA:16246,alimentary system,,TRUE
+37,mandible,18290,,EMAPA:32714,musculoskeletal system,,TRUE
+38,lower_molar_primordia,17921,,EMAPA:16246,alimentary system,,TRUE
+39,lower_incisor_primordia,17918,,EMAPA:16246,alimentary system,,TRUE
+40,stomach_wall,35826,,EMAPA:16246,alimentary system,,
+41,stomach_lumen,18395,,EMAPA:16246,alimentary system,,
+42,foregut,16548,,EMAPA:16246,alimentary system,,
+43,mid_hindgut,16247,n/a (= 16255(midgut) + 16715(hindgut)),term not found,term not found,,
+44,rectum,17896,,EMAPA:16246,alimentary system,,
+45,pancreas,17503,,EMAPA:16246,alimentary system,,
+46,thyroid,17068,,EMAPA:16246,alimentary system,,TRUE
+47,medial_pterygoid_muscle,25141,,EMAPA:32714,musculoskeletal system,,TRUE
+48,masseter_muscle,25135,,EMAPA:32714,musculoskeletal system,,TRUE
+49,tongue,17185,,EMAPA:16246,alimentary system,,
+50,genioglossus_muscle,18276,,EMAPA:32714,musculoskeletal system,,TRUE
+51,vomeronasal_organ,17612,,EMAPA:16192,sensory organ system,,
+52,medial_lobe_of_liver,18318,,EMAPA:16840,liver and biliary system,,
+53,left_lobe_of_liver,18307,,EMAPA:16840,liver and biliary system,,
+54,right_lobe_of_liver,18311,,EMAPA:16840,liver and biliary system,,
+55,caudate_lobe_of_liver,18313,,EMAPA:16840,liver and biliary system,,
+56,bladder_wall,35175,,EMAPA:16367,genitourinary system,,TRUE
+57,bladder_lumen,18321,,EMAPA:16367,genitourinary system,,TRUE
+58,metanephros,17373,,EMAPA:16367,genitourinary system,,TRUE
+59,ureteric_trunk,28494,,EMAPA:16367,genitourinary system,,TRUE
+60,nephric_ducts,16577,,EMAPA:16367,genitourinary system,,TRUE
+61,left_lung,17653,,EMAPA:16727,respiratory system,,
+62,right_lung_cranial_lobe,17991,,EMAPA:16727,respiratory system,,
+63,right_lung_middle_lobe,17997,,EMAPA:16727,respiratory system,,
+64,right_lung_caudal_lobe,17986,,EMAPA:16727,respiratory system,,
+65,right_lung_accessory_lobe,17981,,EMAPA:16727,respiratory system,,
+66,bronchii,32689,,EMAPA:16727,respiratory system,,
+67,trachea,16853,,EMAPA:16727,respiratory system,,TRUE
+68,optic II nerve,17575,,EMAPA:16192,sensory organ system,,TRUE
+69,eye_muscles,35335,,EMAPA:16192,sensory organ system,,
+70,nasal_cavity_epithelium,17605,,EMAPA:16192,sensory organ system,,TRUE
+71,future_anterior_pituitary,35998,,EMAPA:35306,endocrine system,,TRUE
+72,infundibulum_of_pituitary,35998,,EMAPA:35306,endocrine system,,TRUE
+74,facial__VII__ganglia,17569,,EMAPA:16469,nervous system,,TRUE
+75,trigeminal__V__ganglia,16797,,EMAPA:16469,nervous system,,TRUE
+76,vestibulocochlear__VIII__ganglia,17571,,EMAPA:16469,nervous system,,TRUE
+77,superior_ganglion_of_glossopharyngeal__IX__nerves,17154,,EMAPA:16469,nervous system,,TRUE
+78,inferior_ganglion_of_glossopharyngeal__IX__nerves,17153,,EMAPA:16469,nervous system,,TRUE
+79,superior_cervical_sympathetic_ganglia,18441,,EMAPA:16469,nervous system,,TRUE
+80,sympathetic_ganglia,17157,,EMAPA:16469,nervous system,,TRUE
+81,oculomotor__III__nerve,17574,,EMAPA:16469,nervous system,,TRUE
+82,trigeminal__V1__nerves,17798,,EMAPA:16469,nervous system,,TRUE
+83,trigeminal__V2__nerves,17799,,EMAPA:16469,nervous system,,TRUE
+84,trigeminal__V3__nerves,17800,,EMAPA:16469,nervous system,,TRUE
+85,vestibulocochlear__VIII__nerves,17801,,EMAPA:16469,nervous system,,TRUE
+86,anterior__left___vagal__X__trunk,25350,,EMAPA:16469,nervous system,,TRUE
+87,posterior__right__vagal__X__trunk,17275,,EMAPA:16469,nervous system,,TRUE
+88,spinal_accessory__XI__nerves,17267,,EMAPA:16469,nervous system,,TRUE
+89,hypoglossal__XII__nerves,17269,,EMAPA:16469,nervous system,,TRUE
+90,spinal_nerves,16989,,EMAPA:16469,nervous system,,TRUE
+91,left_recurrent_laryngeal_nerve,25350,,EMAPA:16469,nervous system,,TRUE
+92,right_recurrent_laryngeal_nerve,17275,,EMAPA:16469,nervous system,,TRUE
+93,spinal_cord_mantle_layer,17580,,EMAPA:16469,nervous system,,
+94,spinal_cord_marginal_layer,17583,,EMAPA:16469,nervous system,,
+95,heart,16105,,EMAPA:16104,cardiovascular system,,
+96,aorta,18601,,EMAPA:16104,cardiovascular system,,TRUE
+97,ascending_aorta,17014,,EMAPA:16104,cardiovascular system,,TRUE
+98,descending_aorta,18606,,EMAPA:16104,cardiovascular system,,TRUE
+99,aortic_arch,17613,,EMAPA:16104,cardiovascular system,,TRUE
+100,anterior_cerebral_arteries,17854,,EMAPA:16104,cardiovascular system,,TRUE
+101,middle_cerebral_arteries,18239,,EMAPA:16104,cardiovascular system,,TRUE
+102,posterior_cerebral_arteries,17861,,EMAPA:16104,cardiovascular system,,TRUE
+103,common_carotid_arteries,17855,,EMAPA:16104,cardiovascular system,,TRUE
+104,external_carotid_arteries,18611,,EMAPA:16104,cardiovascular system,,TRUE
+105,internal_carotid_arteries,16328,,EMAPA:16104,cardiovascular system,,TRUE
+106,communicating_arteries,18598,,EMAPA:16104,cardiovascular system,,TRUE
+107,pulmonary_arteries,17008,,EMAPA:16727,respiratory system,,TRUE
+108,umbilical_arteries,16331,,EMAPA:16104,cardiovascular system,,TRUE
+109,vertebrobasilar_artery,,,term not found,term not found,,TRUE
+110,ductus_arteriosus,17858,,EMAPA:16104,cardiovascular system,,TRUE
+111,ductus_venosus,17343,,EMAPA:16104,cardiovascular system,,TRUE
+112,jugular_veins,18638,,EMAPA:16104,cardiovascular system,,TRUE
+113,jugular_lymph_sacs,18249,,EMAPA:16104,cardiovascular system,,TRUE
+114,inferior_vena_cava,18416,,EMAPA:16104,cardiovascular system,,TRUE
+115,superior_vena_cava,18417,,EMAPA:16104,cardiovascular system,,TRUE
+116,pulmonary_veins,18645,,EMAPA:16727,respiratory system,,TRUE
+117,subclavian_veins,17621,,EMAPA:16104,cardiovascular system,,TRUE
+118,adrenals,18426,,EMAPA:35306,endocrine system,,TRUE
+119,spleen_primordium,18535,,EMAPA:16246,alimentary system,,TRUE
+120,thymus_primordium,17523,,EMAPA:18765,hemolymphoid system,,TRUE
+121,forelimb_phalanges,32650,,EMAPA:32714,musculoskeletal system,,TRUE
+122,metacarpals,36158,,EMAPA:32714,musculoskeletal system,,TRUE
+123,carpals,25056,,EMAPA:32714,musculoskeletal system,,TRUE
+124,radius,19103,,EMAPA:32714,musculoskeletal system,,TRUE
+125,ulna,19104,,EMAPA:32714,musculoskeletal system,,TRUE
+126,humerus,19106,,EMAPA:32714,musculoskeletal system,,TRUE
+127,triceps_brachii,19111,,EMAPA:32714,musculoskeletal system,,TRUE
+128,biceps_brachii,19108,,EMAPA:32714,musculoskeletal system,,TRUE
+129,flexor_carpi_radialis,36197,,EMAPA:32714,musculoskeletal system,,TRUE
+130,flexor_carpi_ulnaris,36198,,EMAPA:32714,musculoskeletal system,,TRUE
+131,flexor_digitorum_superficial_tendon,NA,unknown,term not found,term not found,,TRUE
+132,flexor_digitorum_profundus_humeral_or_superficial_head,NA,,term not found,term not found,,TRUE
+133,flexor_digitorum_profundus_radial_head,36200,,EMAPA:32714,musculoskeletal system,,TRUE
+134,flexor_digitorum_profundus_ulnar_head,36201,,EMAPA:32714,musculoskeletal system,,TRUE
+135,flexor_digitorum_superficial_tendon_branches,NA,,term not found,term not found,,TRUE
+136,extensor_carpi_ulnaris,36190,,EMAPA:32714,musculoskeletal system,,TRUE
+137,extensor_digitorum_lateralis,36192,,EMAPA:32714,musculoskeletal system,,TRUE
+138,extensor_digitorum_communis,36191,,EMAPA:32714,musculoskeletal system,,TRUE
+139,extensor_pollicis__longus_and_brevis_,NA,n/a (= 36195 + 36196),term not found,term not found,,TRUE
+140,extensor_carpi_radialis__longus_and_brevis_,NA,n/a (= 36188 + 36189),term not found,term not found,,TRUE
+141,pronator_quadratus,36206,,EMAPA:32714,musculoskeletal system,,TRUE
+142,pronator_teres,NA,,term not found,term not found,,TRUE
+143,palmaris_longus,36205,,EMAPA:32714,musculoskeletal system,,TRUE
+144,teres_major,19110,,EMAPA:32714,musculoskeletal system,,TRUE
+145,latissimus_dorsi,18178,,EMAPA:32714,musculoskeletal system,,TRUE
+146,hindlimb_phalanges,32941,,EMAPA:32714,musculoskeletal system,,TRUE
+147,metatarsals,36159,,EMAPA:32714,musculoskeletal system,,TRUE
+148,tarsals,25072,,EMAPA:32714,musculoskeletal system,,TRUE
+149,fibula,19141,,EMAPA:32714,musculoskeletal system,,TRUE
+150,tibia,19142,,EMAPA:32714,musculoskeletal system,,TRUE
+151,femur,19143,,EMAPA:32714,musculoskeletal system,,TRUE
+152,iliacus,19164,,EMAPA:32714,musculoskeletal system,,TRUE
+153,quadratus_femoris,36241,,EMAPA:32714,musculoskeletal system,,TRUE
+154,biceps_femoris,35170,,EMAPA:32714,musculoskeletal system,,TRUE
+155,psoas_major,18169,,EMAPA:32714,musculoskeletal system,,TRUE
+156,psoas_minor,18170,,EMAPA:32714,musculoskeletal system,,TRUE
+157,ligamentum_patellae,18509,,EMAPA:32714,musculoskeletal system,,TRUE
+158,peroneus_longus,36253,,EMAPA:32714,musculoskeletal system,,TRUE
+159,peroneus_digiti_quarti,36260,,EMAPA:32714,musculoskeletal system,,TRUE
+160,caudofemoralis,36226,,EMAPA:32714,musculoskeletal system,,TRUE
+161,semimembranosus,36242,,EMAPA:32714,musculoskeletal system,,TRUE
+162,semitendinosus,35762,,EMAPA:32714,musculoskeletal system,,TRUE
+163,gluteus_maximus,18527,,EMAPA:32714,musculoskeletal system,,TRUE
+164,tibialis_anterior,35866,,EMAPA:32714,musculoskeletal system,,TRUE
+165,tibialis_posterior,36255,,EMAPA:32714,musculoskeletal system,,TRUE
+166,gracilis_anticus,36232,,EMAPA:32714,musculoskeletal system,,TRUE
+167,gracilis_posticus,36233,,EMAPA:32714,musculoskeletal system,,TRUE
+168,pectineus,36238,,EMAPA:32714,musculoskeletal system,,TRUE
+169,extensor_digitorum_longus,35330,,EMAPA:32714,musculoskeletal system,,TRUE
+170,vastus_intermedius,36243,,EMAPA:32714,musculoskeletal system,,TRUE
+171,vastus_medialis,36245,,EMAPA:32714,musculoskeletal system,,TRUE
+172,vastus_lateralis,36244,,EMAPA:32714,musculoskeletal system,,TRUE
+173,gastrocnemius_lateral_head,36249,,EMAPA:32714,musculoskeletal system,,TRUE
+174,gastrocnemius_medial_head,36250,,EMAPA:32714,musculoskeletal system,,TRUE
+175,flexor_digitorum_longus,36248,,EMAPA:32714,musculoskeletal system,,TRUE
+176,popliteus,36240,,EMAPA:32714,musculoskeletal system,,TRUE
+177,plantaris,36254,,EMAPA:32714,musculoskeletal system,,TRUE
+178,soleus,35786,,EMAPA:32714,musculoskeletal system,,TRUE
+179,tensor_aponeurosis_plantaris,36265,,EMAPA:32714,musculoskeletal system,,TRUE
+180,pectoralis,35670,,term not found,term not found,,TRUE
+181,trapezius,18183,,EMAPA:32714,musculoskeletal system,,TRUE
+182,serratus_anterior,35769,,EMAPA:32714,musculoskeletal system,,TRUE
+183,cervical_vertebrae,17674,,EMAPA:32714,musculoskeletal system,,TRUE
+184,thoracic_vertebrae,18011,,EMAPA:32714,musculoskeletal system,,TRUE
+185,lumbar_vertebrae,18007,,EMAPA:32714,musculoskeletal system,,TRUE
+186,sacral_vertebrae,18009,,EMAPA:32714,musculoskeletal system,,TRUE
+187,tail_vertebrae,18374,,EMAPA:32714,musculoskeletal system,,TRUE
+188,ribs,18010,,EMAPA:32714,musculoskeletal system,,TRUE
+189,basisphenoid_bone,18706,,EMAPA:32714,musculoskeletal system,,TRUE
+190,exoccipital_bone,18708,,EMAPA:32714,musculoskeletal system,,TRUE
+191,hyoid_bone,18650,,EMAPA:32714,musculoskeletal system,,TRUE
+192,thyroid_cartilage,18698,,EMAPA:16727,respiratory system,,TRUE
+193,cricoid_cartilage,18696,,EMAPA:16727,respiratory system,,TRUE
+194,arytenoid_cartilage,18695,,EMAPA:16727,respiratory system,,TRUE
+195,epiglottis,18289,,EMAPA:16246,alimentary system,,TRUE
+196,clavicle,18721,,EMAPA:32714,musculoskeletal system,,TRUE
+197,scapula,18722,,EMAPA:32714,musculoskeletal system,,TRUE
+198,pelvic_girdle,18028,,EMAPA:32714,musculoskeletal system,,TRUE
+199,diaphragm,17701,,EMAPA:16727,respiratory system,,TRUE
+200,dorsal root ganglion,16668,,EMAPA:16469,nervous system,,TRUE
+204,tail_drg,18372,,EMAPA:16469,nervous system,,TRUE
+205,ovary,17962,,EMAPA:16367,genitourinary system,,TRUE
+206,peritoneal_cavity,16138,,term not found,term not found,,TRUE
+207,pleural_and_pericardial_components,NA,n/a (= 16773 + 16131),term not found,term not found,,TRUE
+209,vomeronasal_cavity,NA,made by Kyle,term not found,craniofacial system,,
+210,philtrum,,made by Kyle,term not found,craniofacial system,,

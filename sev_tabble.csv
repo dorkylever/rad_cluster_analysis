@@ -1,0 +1,149 @@
+Filter,Type,Stat,Org,VolMean,Correlation,Org_Type
+HLH,glcm,Idn,forebrain anteroventral region,0.994513575637837,Negative,glcm.forebrain anteroventral region
+LHL,gldm,SmallDependenceHighGrayLevelEmphasis,forebrain anteroventral region,1.48008376558263,Positive,gldm.forebrain anteroventral region
+HLH,glcm,InverseVariance,forebrain anteroventral region,1.02985296078333,Positive,glcm.forebrain anteroventral region
+original,glrlm,GrayLevelNonUniformityNormalized,brain lateral ventricle,0.860821632424145,Negative,glrlm.brain lateral ventricle
+HHL,gldm,LargeDependenceHighGrayLevelEmphasis,forebrain anteroventral region,0.846892256358534,Negative,gldm.forebrain anteroventral region
+HLL,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.27063685894778,Positive,glrlm.forebrain anteroventral region
+HHL,glrlm,RunLengthNonUniformityNormalized,forebrain anteroventral region,1.12165432992868,Positive,glrlm.forebrain anteroventral region
+LHH,glrlm,RunEntropy,forebrain anteroventral region,0.950122532472716,Negative,glrlm.forebrain anteroventral region
+HHL,gldm,SmallDependenceLowGrayLevelEmphasis,forebrain anteroventral region,1.50290470758635,Positive,gldm.forebrain anteroventral region
+HHH,gldm,SmallDependenceEmphasis,forebrain anteroventral region,1.47103227250243,Positive,gldm.forebrain anteroventral region
+LLH,gldm,LargeDependenceEmphasis,forebrain anteroventral region,0.87976528461544,Negative,gldm.forebrain anteroventral region
+HLL,glcm,Imc,forebrain anteroventral region,0.725286834911677,Negative,glcm.forebrain anteroventral region
+LLH,glcm,JointAverage,forebrain anteroventral region,1.03172836878594,Positive,glcm.forebrain anteroventral region
+square,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.516956784526396,Negative,gldm.forebrain anteroventral region
+HHH,gldm,SmallDependenceLowGrayLevelEmphasis,forebrain anteroventral region,1.46410934505232,Positive,gldm.forebrain anteroventral region
+LLH,glrlm,RunLengthNonUniformity,midbrain,1.04251578785714,Positive,glrlm.midbrain
+LLL,firstorder,Energy,forebrain anteroventral region,0.499149933535363,Negative,firstorder.forebrain anteroventral region
+exponential,ngtdm,Coarseness,forebrain anteroventral region,2.50254964574007,Positive,ngtdm.forebrain anteroventral region
+HHL,glrlm,ShortRunEmphasis,forebrain anteroventral region,1.07287034109938,Positive,glrlm.forebrain anteroventral region
+HHH,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.489975634442982,Negative,gldm.forebrain anteroventral region
+original,shape,MeshVolume,forebrain anteroventral region,0.487323013080243,Negative,shape.forebrain anteroventral region
+gradient,glrlm,ShortRunHighGrayLevelEmphasis,forebrain anteroventral region,2.06845384410072,Positive,glrlm.forebrain anteroventral region
+HHH,gldm,DependenceVariance,forebrain anteroventral region,1.22753871243851,Positive,gldm.forebrain anteroventral region
+LLH,glcm,Autocorrelation,forebrain anteroventral region,1.07841798120416,Positive,glcm.forebrain anteroventral region
+LHH,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.05385445905972,Positive,glrlm.forebrain anteroventral region
+HLH,glcm,Autocorrelation,forebrain anteroventral region,0.992539901250939,Negative,glcm.forebrain anteroventral region
+HHH,gldm,SmallDependenceHighGrayLevelEmphasis,forebrain anteroventral region,1.47794547386732,Positive,gldm.forebrain anteroventral region
+LLH,gldm,DependenceNonUniformity,forebrain anteroventral region,0.497139231516493,Negative,gldm.forebrain anteroventral region
+HLH,ngtdm,Complexity,forebrain anteroventral region,1.02898201562777,Positive,ngtdm.forebrain anteroventral region
+LLH,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.17139132398396,Positive,glrlm.forebrain anteroventral region
+HLL,glcm,Correlation,forebrain anteroventral region,0.746027742224452,Negative,glcm.forebrain anteroventral region
+HLH,glcm,ClusterProminence,forebrain anteroventral region,0.974346489130668,Negative,glcm.forebrain anteroventral region
+HLH,glcm,Id,forebrain anteroventral region,0.990937613601988,Negative,glcm.forebrain anteroventral region
+HHH,gldm,LargeDependenceLowGrayLevelEmphasis,forebrain anteroventral region,0.864161164288398,Negative,gldm.forebrain anteroventral region
+HLH,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.07142673377481,Positive,glrlm.forebrain anteroventral region
+LLH,gldm,DependenceEntropy,forebrain anteroventral region,1.02195559054525,Positive,gldm.forebrain anteroventral region
+HLL,gldm,DependenceNonUniformity,forebrain anteroventral region,0.518618265975681,Negative,gldm.forebrain anteroventral region
+HLH,glcm,Idm,forebrain anteroventral region,0.990937613601988,Negative,glcm.forebrain anteroventral region
+original,glrlm,GrayLevelVariance,brain lateral ventricle,1.39116067414328,Positive,glrlm.brain lateral ventricle
+LLH,gldm,SmallDependenceLowGrayLevelEmphasis,forebrain anteroventral region,1.39928124424838,Positive,gldm.forebrain anteroventral region
+LHH,glrlm,ShortRunHighGrayLevelEmphasis,forebrain anteroventral region,1.06822585684055,Positive,glrlm.forebrain anteroventral region
+original,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.553092319722496,Negative,gldm.forebrain anteroventral region
+HLL,glcm,MCC,forebrain anteroventral region,0.746027742224452,Negative,glcm.forebrain anteroventral region
+HLH,glcm,DifferenceAverage,forebrain anteroventral region,1.02985296078333,Positive,glcm.forebrain anteroventral region
+HLH,glrlm,LongRunLowGrayLevelEmphasis,forebrain anteroventral region,0.808381734380952,Negative,glrlm.forebrain anteroventral region
+LLH,glrlm,LongRunEmphasis,forebrain anteroventral region,0.822640279581793,Negative,glrlm.forebrain anteroventral region
+original,firstorder,TotalEnergy,forebrain anteroventral region,0.499034430775423,Negative,firstorder.forebrain anteroventral region
+HHL,glrlm,RunPercentage,forebrain anteroventral region,1.08690279974032,Positive,glrlm.forebrain anteroventral region
+LLH,glrlm,RunPercentage,forebrain anteroventral region,1.12878715589354,Positive,glrlm.forebrain anteroventral region
+LHH,glrlm,ShortRunEmphasis,forebrain anteroventral region,1.06096584872659,Positive,glrlm.forebrain anteroventral region
+exponential,gldm,LargeDependenceEmphasis,forebrain anteroventral region,0.853234636152919,Negative,gldm.forebrain anteroventral region
+LLH,gldm,GrayLevelVariance,forebrain anteroventral region,1.02972652327717,Positive,gldm.forebrain anteroventral region
+gradient,glrlm,ShortRunEmphasis,forebrain anteroventral region,1.89909403483341,Positive,glrlm.forebrain anteroventral region
+LHL,firstorder,MeanAbsoluteDeviation,vomeronasal cavity,1.26253214714589,Positive,firstorder.vomeronasal cavity
+gradient,glrlm,RunEntropy,forebrain anteroventral region,0.85846628992037,Negative,glrlm.forebrain anteroventral region
+HLH,gldm,LargeDependenceEmphasis,forebrain anteroventral region,0.82571228239576,Negative,gldm.forebrain anteroventral region
+HLL,gldm,GrayLevelNonUniformity,midbrain,1.03116232997829,Positive,gldm.midbrain
+LLH,firstorder,TotalEnergy,forebrain anteroventral region,0.56480600632138,Negative,firstorder.forebrain anteroventral region
+HHL,glcm,ClusterProminence,forebrain anteroventral region,0.985665917561911,Negative,glcm.forebrain anteroventral region
+HHL,gldm,LargeDependenceEmphasis,forebrain anteroventral region,0.845022229083261,Negative,gldm.forebrain anteroventral region
+LHH,gldm,DependenceNonUniformity,midbrain,1.0536877268065,Positive,gldm.midbrain
+HLH,gldm,DependenceNonUniformity,forebrain anteroventral region,0.494323048881712,Negative,gldm.forebrain anteroventral region
+LLH,glrlm,LongRunLowGrayLevelEmphasis,forebrain anteroventral region,0.766508914004185,Negative,glrlm.forebrain anteroventral region
+HHL,ngtdm,Busyness,midbrain,1.05017097071836,Positive,ngtdm.midbrain
+LLH,firstorder,Uniformity,forebrain anteroventral region,0.973869368647667,Negative,firstorder.forebrain anteroventral region
+LLH,gldm,LowGrayLevelEmphasis,forebrain anteroventral region,0.961364913093077,Negative,gldm.forebrain anteroventral region
+HLL,ngtdm,Strength,midbrain,0.934270391262557,Negative,ngtdm.midbrain
+HLH,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.489881491970778,Negative,gldm.forebrain anteroventral region
+LHH,glrlm,RunLengthNonUniformityNormalized,forebrain anteroventral region,1.10111689678196,Positive,glrlm.forebrain anteroventral region
+HHH,firstorder,TotalEnergy,forebrain anteroventral region,0.532436703916257,Negative,firstorder.forebrain anteroventral region
+HLH,glrlm,LongRunEmphasis,forebrain anteroventral region,0.798375342824029,Negative,glrlm.forebrain anteroventral region
+HLH,gldm,SmallDependenceHighGrayLevelEmphasis,forebrain anteroventral region,1.49731686023501,Positive,gldm.forebrain anteroventral region
+HLH,ngtdm,Contrast,forebrain anteroventral region,1.029139069153,Positive,ngtdm.forebrain anteroventral region
+LLH,glrlm,RunLengthNonUniformity,forebrain anteroventral region,0.581916809969397,Negative,glrlm.forebrain anteroventral region
+HLH,glcm,ClusterTendency,forebrain anteroventral region,0.974486345408077,Negative,glcm.forebrain anteroventral region
+HLH,gldm,SmallDependenceLowGrayLevelEmphasis,forebrain anteroventral region,1.44646224141658,Positive,gldm.forebrain anteroventral region
+exponential,glrlm,RunPercentage,forebrain anteroventral region,1.33619781750449,Positive,glrlm.forebrain anteroventral region
+gradient,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.488526347666411,Negative,gldm.forebrain anteroventral region
+LHH,glrlm,LongRunEmphasis,forebrain anteroventral region,0.862297609829408,Negative,glrlm.forebrain anteroventral region
+LHH,gldm,LargeDependenceEmphasis,forebrain anteroventral region,0.889573542491918,Negative,gldm.forebrain anteroventral region
+HHH,glrlm,LongRunLowGrayLevelEmphasis,forebrain anteroventral region,0.855574261349563,Negative,glrlm.forebrain anteroventral region
+LLH,gldm,GrayLevelNonUniformity,midbrain,1.04596474877357,Positive,gldm.midbrain
+LLH,firstorder,Median,forebrain anteroventral region,0.790630313601707,Negative,firstorder.forebrain anteroventral region
+HLH,gldm,SmallDependenceEmphasis,forebrain anteroventral region,1.47128956129768,Positive,gldm.forebrain anteroventral region
+gradient,glrlm,RunLengthNonUniformityNormalized,forebrain anteroventral region,1.84990071649619,Positive,glrlm.forebrain anteroventral region
+HLH,glcm,SumEntropy,forebrain anteroventral region,0.991769015004438,Negative,glcm.forebrain anteroventral region
+HLH,glrlm,RunVariance,forebrain anteroventral region,0.733556998894653,Negative,glrlm.forebrain anteroventral region
+HHL,glrlm,RunEntropy,forebrain anteroventral region,0.938679706368971,Negative,glrlm.forebrain anteroventral region
+HHL,glcm,ClusterTendency,forebrain anteroventral region,0.985667827094713,Negative,glcm.forebrain anteroventral region
+LLH,firstorder,Energy,forebrain anteroventral region,0.56480600632138,Negative,firstorder.forebrain anteroventral region
+LHH,glrlm,RunLengthNonUniformity,midbrain,1.03403257325243,Positive,glrlm.midbrain
+HLH,glrlm,RunLengthNonUniformity,midbrain,1.03345531847575,Positive,glrlm.midbrain
+HHH,glrlm,ShortRunHighGrayLevelEmphasis,forebrain anteroventral region,1.05081057745325,Positive,glrlm.forebrain anteroventral region
+HLL,glrlm,GrayLevelNonUniformity,midbrain,1.04617060607218,Positive,glrlm.midbrain
+LLH,glrlm,RunVariance,forebrain anteroventral region,0.786404563850734,Negative,glrlm.forebrain anteroventral region
+HLL,ngtdm,Coarseness,midbrain,0.932959727032443,Negative,ngtdm.midbrain
+exponential,glrlm,GrayLevelNonUniformity,forebrain anteroventral region,0.57118180592917,Negative,glrlm.forebrain anteroventral region
+LHL,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.16916708457066,Positive,glrlm.forebrain anteroventral region
+LHH,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.489766793246377,Negative,gldm.forebrain anteroventral region
+LLH,glcm,SumAverage,forebrain anteroventral region,1.03172836878594,Positive,glcm.forebrain anteroventral region
+HHH,firstorder,Energy,forebrain anteroventral region,0.532436703916257,Negative,firstorder.forebrain anteroventral region
+HLH,glcm,Idmn,forebrain anteroventral region,0.996933566949623,Negative,glcm.forebrain anteroventral region
+LLH,firstorder,Entropy,forebrain anteroventral region,1.02139153848999,Positive,firstorder.forebrain anteroventral region
+LHL,gldm,DependenceNonUniformity,midbrain,1.04866146276212,Positive,gldm.midbrain
+LHH,gldm,LargeDependenceLowGrayLevelEmphasis,forebrain anteroventral region,0.898786946745484,Negative,gldm.forebrain anteroventral region
+square,glrlm,GrayLevelNonUniformity,forebrain anteroventral region,0.589555387633991,Negative,glrlm.forebrain anteroventral region
+exponential,glrlm,RunLengthNonUniformityNormalized,forebrain anteroventral region,1.39249049896497,Positive,glrlm.forebrain anteroventral region
+LLH,gldm,LargeDependenceLowGrayLevelEmphasis,forebrain anteroventral region,0.803427887302298,Negative,gldm.forebrain anteroventral region
+HHH,glszm,ZonePercentage,forebrain anteroventral region,5.64342482683552,Positive,glszm.forebrain anteroventral region
+original,firstorder,Energy,forebrain anteroventral region,0.499034430775423,Negative,firstorder.forebrain anteroventral region
+original,shape,VoxelVolume,forebrain anteroventral region,0.489958370228212,Negative,shape.forebrain anteroventral region
+HLL,glcm,ClusterProminence,forebrain anteroventral region,0.919962129895708,Negative,glcm.forebrain anteroventral region
+HLH,glrlm,ShortRunEmphasis,forebrain anteroventral region,1.07934359634195,Positive,glrlm.forebrain anteroventral region
+HLH,glcm,ClusterShade,forebrain anteroventral region,0.611030395740216,Negative,glcm.forebrain anteroventral region
+HLL,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.48673720826449,Negative,gldm.forebrain anteroventral region
+LHH,gldm,SmallDependenceHighGrayLevelEmphasis,forebrain anteroventral region,1.50693793714872,Positive,gldm.forebrain anteroventral region
+HHL,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.06902153400019,Positive,glrlm.forebrain anteroventral region
+HLH,glrlm,LongRunHighGrayLevelEmphasis,forebrain anteroventral region,0.788916055277918,Negative,glrlm.forebrain anteroventral region
+HLH,glrlm,RunEntropy,forebrain anteroventral region,0.932969293590147,Negative,glrlm.forebrain anteroventral region
+square,gldm,DependenceVariance,forebrain anteroventral region,1.16325143306915,Positive,gldm.forebrain anteroventral region
+LLH,glcm,ClusterTendency,forebrain anteroventral region,1.07324156608906,Positive,glcm.forebrain anteroventral region
+HLL,glrlm,RunEntropy,forebrain anteroventral region,0.887213859475308,Negative,glrlm.forebrain anteroventral region
+LHL,ngtdm,Coarseness,midbrain,0.949609638357392,Negative,ngtdm.midbrain
+HLH,glcm,Contrast,forebrain anteroventral region,1.02985296078333,Positive,glcm.forebrain anteroventral region
+logarithm,glrlm,GrayLevelNonUniformity,forebrain anteroventral region,0.739959700647513,Negative,glrlm.forebrain anteroventral region
+LHH,glrlm,RunPercentage,forebrain anteroventral region,1.07155821342674,Positive,glrlm.forebrain anteroventral region
+HLH,glcm,Correlation,forebrain anteroventral region,0.594908027556163,Negative,glcm.forebrain anteroventral region
+HLL,glcm,DifferenceEntropy,forebrain anteroventral region,1.04921480567969,Positive,glcm.forebrain anteroventral region
+LHL,gldm,SmallDependenceEmphasis,forebrain anteroventral region,1.50037597451452,Positive,gldm.forebrain anteroventral region
+exponential,glrlm,ShortRunEmphasis,forebrain anteroventral region,1.2347441667206,Positive,glrlm.forebrain anteroventral region
+HLH,glrlm,RunLengthNonUniformityNormalized,forebrain anteroventral region,1.13512353514881,Positive,glrlm.forebrain anteroventral region
+LHH,glrlm,LongRunLowGrayLevelEmphasis,forebrain anteroventral region,0.885713643821323,Negative,glrlm.forebrain anteroventral region
+HLL,glcm,DifferenceVariance,forebrain anteroventral region,1.06765156551058,Positive,glcm.forebrain anteroventral region
+LLH,gldm,HighGrayLevelEmphasis,forebrain anteroventral region,1.05217663408608,Positive,gldm.forebrain anteroventral region
+HHL,glrlm,LongRunHighGrayLevelEmphasis,forebrain anteroventral region,0.81969058502558,Negative,glrlm.forebrain anteroventral region
+original,glrlm,GrayLevelNonUniformity,forebrain anteroventral region,0.670623117425726,Negative,glrlm.forebrain anteroventral region
+LHH,glrlm,GrayLevelNonUniformity,midbrain,1.0407969267158,Positive,glrlm.midbrain
+HLH,glrlm,ShortRunHighGrayLevelEmphasis,forebrain anteroventral region,1.08742636334632,Positive,glrlm.forebrain anteroventral region
+LLL,firstorder,TotalEnergy,forebrain anteroventral region,0.499149933535363,Negative,firstorder.forebrain anteroventral region
+gradient,glrlm,ShortRunLowGrayLevelEmphasis,forebrain anteroventral region,1.8565909819834,Positive,glrlm.forebrain anteroventral region
+LLH,glcm,SumSquares,forebrain anteroventral region,1.0379118923642,Positive,glcm.forebrain anteroventral region
+LLL,glrlm,GrayLevelNonUniformity,forebrain anteroventral region,0.565059462076376,Negative,glrlm.forebrain anteroventral region
+LLH,glcm,SumEntropy,forebrain anteroventral region,1.0190600261211,Positive,glcm.forebrain anteroventral region
+HLH,gldm,DependenceNonUniformity,midbrain,1.05486978152633,Positive,gldm.midbrain
+LHH,glrlm,RunVariance,forebrain anteroventral region,0.836254738562093,Negative,glrlm.forebrain anteroventral region
+HLH,gldm,LargeDependenceHighGrayLevelEmphasis,forebrain anteroventral region,0.815042909151048,Negative,gldm.forebrain anteroventral region
+HHL,gldm,GrayLevelNonUniformity,forebrain anteroventral region,0.489978635254987,Negative,gldm.forebrain anteroventral region
+HLH,glrlm,RunPercentage,forebrain anteroventral region,1.09867478083572,Positive,glrlm.forebrain anteroventral region
