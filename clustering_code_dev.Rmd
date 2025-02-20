@@ -2156,8 +2156,13 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   
     
     corr_network_levels <- levels(factor(clusters$corr_networks))
+  
     
-    all_required_colors <- length(all_required_colors) + length(corr_network_levels)-1
+    all_required_colors <- all_required_colors + length(corr_network_levels)-1
+    
+    print(length(corr_network_levels))
+    
+    print(all_required_colors)
     
     
     extended_palette <- if (all_required_colors > 9) colorRampPalette(brewer.pal(9, "Set1"))(all_required_colors) else brewer.pal(9, "Set1")
@@ -2187,14 +2192,17 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
     ann_colors$HCA.Cutree <- setNames(hca_palette, hca_levels)
     ann_colors$HCA.Cutree <- ann_colors$HCA.Cutree[!is.na(names(ann_colors$HCA.Cutree))]
     
-    cor_colors <- "black"
+    cor_colors <- "grey"
+    print((length(dbscan_levels)+length(hca_levels)-1))
     
-    corr_network_palette <- c(cor_colors, extended_palette[(length(dbscan_levels)+length(hca_levels)-2):all_required_colors])
+    print((length(dbscan_levels)+length(hca_levels)):all_required_colors)
+    
+    corr_network_palette <- c(cor_colors, extended_palette[(length(dbscan_levels)+length(hca_levels)):all_required_colors])
     
     
     print(corr_network_palette)
     ann_colors$Corr.Network <- setNames(corr_network_palette, corr_network_levels)
-    ann_colors$Corr.Network <- ann_colors$Corr_network[!is.na(names(ann_colors$Corr_network))]
+    ann_colors$Corr.Network <- ann_colors$Corr.Network[!is.na(names(ann_colors$Corr.Network))]
     
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
     colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
@@ -2639,7 +2647,7 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
       if (ncol(all_reduced_df) < 50) {plot_differences(all_reduced_df, diffs$all_cols)}
       
       write.csv(all_reduced_df, paste(test_effect, "_all_output.csv"))
-      #determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
+      determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
     }
   }
 }
