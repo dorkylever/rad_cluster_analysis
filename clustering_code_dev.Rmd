@@ -522,96 +522,7 @@ int_fully_pene_feats <- g_by_e_qvals[5, ][is.numeric(g_by_e_qvals[5, ]) & !is.na
 # plot full penetrance stuff:
 
 
-plot_fully_pene_feats <- function(tvals, signif_feats){
-  
-  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
-  
-  cluster_df <- create_cluster_df(signif_tvals)
-  
-  non_sign_feats$Tvals <- tvals
-  
-  cluster_df$Tvals <- signif_tvals
-  
-  
-  pos_or_neg <- ifelse(signif_tvals < 0, "Negative", "Positive")
-  
-  cluster_df$Correlation <- pos_or_neg
-  
-  split_by_corr <- split(cluster_df, cluster_df$Correlation)
-  
-   # Check if split_by_corr$Positive is empty
-  is_positive_empty <- is.null(split_by_corr$Positive) || nrow(split_by_corr$Positive) == 0
-  
-  # Check if split_by_corr$Negative is NULL or empty
-  is_negative_empty <- is.null(split_by_corr$Negative) || nrow(split_by_corr$Negative) == 0
-  
-  
-  if (nrow(cluster_df)>0){
-    black_dots <- anti_join(non_sign_feats, cluster_df)
-    plot <- ggplot(mapping=aes(x = Type, y = Tvals, col=Correlation)) +
-      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
-      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
-      labs(x = "Feature Type", 
-           y = expression("t-statistic"), color = "Association of Feature") +
-      theme_minimal()+
-      geom_point(data = black_dots, width = 0.5, position = position_dodge(width = 0.75), col="black")+
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
-     if (!is_negative_empty){
-      plot <- plot + 
-      geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+ 
-      stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col="blue", vjust = 2)
-    }
-    if (!is_positive_empty){ 
-      plot <- plot+
-      geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75))+
-      stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col="red", vjust = -1)
-    }
-    
-    
-    plot <- plot +
-      facet_wrap(~Org, scales = "fixed", ncol = 5)+
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
-      #scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8)) +
-      #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2), NA, FALSE)) +
-      #scale_color_manual(values = c("blue", "red"))+
-      scale_color_manual(values = c("Negative"="blue", "Positive"="red"))
-    
-    if (!is_positive_empty & !is_negative_empty){
-      plot <- plot + scale_y_continuous(limits=c(min(split_by_corr$Negative$Tvals)-3,max(split_by_corr$Positive$Tvals)+3))+
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
-    } else if (!is_negative_empty){ 
-      plot <- plot + scale_y_continuous(limits=c(-8,8))+
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
-      }
-    
-  } else {
-      print("wrong IF")
-      n_fun_zero_pos <- function(x){return(data.frame(y = max(x), label = 0))}
-      n_fun_zero_neg <- function(x){return(data.frame(y = min(x), label = 0))}
-      plot <- ggplot(data=non_sign_feats, mapping=aes(x = Type, y = Tvals)) +
-      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
-      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
-      labs(x = "Feature Type", 
-           y = expression("t-statistic")) +
-      theme_minimal()+
-      geom_point(data = non_sign_feats, width = 0.5, position = position_dodge(width = 0.75), col="black") +
-      #stat_summary(data = non_sign_feats, fun.data = n_fun_zero_pos, geom = "text", col="black", vjust = 2)+
-      #stat_summary(data = split_by_corr$Positive, fun.data = n_fun_zero_neg, geom = "text", col="black", vjust = -1)+
-      facet_wrap(~Org, scales = "fixed", ncol = 5)+
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none") +
-      scale_y_continuous(limits=c(min(non_sign_feats$Tvals)-3,max(non_sign_feats$Tvals)+3))
-      }
-  
-  #geom_segment(aes(x = "Org1_TypeB", xend = "Org2_TypeA", y = -Inf, yend = Inf), linetype = "dashed") 
-  #scale_color_manual(values = type_colors)
-  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2)&(Org == 'forebrain anteroventral region'), NA, FALSE))+
-  
-   
-  #geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+
-   
-  
-  print(plot)
-}
+
 
 non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
 
@@ -715,6 +626,7 @@ stats_per_type<- function(tvals, signif_feats){
   
   counts_table[is.na(counts_table)] <- 0
   
+  print(counts_table)
   counts_table <- counts_table %>% mutate(Non_Counts=Total-Freq)
 
   
@@ -726,12 +638,20 @@ stats_per_type<- function(tvals, signif_feats){
     table_summary <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = table, FUN = mean)
     
     contingency_table <- as.matrix(table_summary[, c("Freq", "Non_Counts")])
-  
-    fisher_test <- fisher.test(contingency_table, simulate.p.value=TRUE)
-  
+    print(contingency_table)
+    print(sum(colSums(contingency_table) > 0))
+    
+    if (sum(colSums(contingency_table) > 0) == 2) {
+      fisher_test <- fisher.test(contingency_table, simulate.p.value=TRUE)
     return(fisher_test$p.value)
+    } else {
+      print("something weird")
+        return(NA)}
+  
+    
   })
   
+  print(pvals_per_type)
   
   mean_filt_table <- aggregate(cbind(Freq, Non_Counts) ~ Type*Org, data = counts_table, FUN = mean)
   
@@ -1963,22 +1883,26 @@ plot_differences <- function(rad_df, cols){
   
 }
 
+do_PCA <- function(df){
+  df <- df %>% dplyr::select(where(is.numeric))
+  
+  
+  pca_result <- prcomp(df, center = TRUE, scale. = TRUE)
+  loadings_pc1 <- abs(pca_result$rotation[, 1])  # Take absolute values
+  top_features <- sort(loadings_pc1, decreasing = TRUE)  # Sort by contribution
+print(barplot(sort(abs(pca_result$rotation[,1]), decreasing = TRUE), las = 2, main = "PC1 Loadings"))
+
+df_rot <-t(df)
+
+dbscan_result <- dbscan(df_rot,  eps = 0.3, minPts = 5)
+
+print(dbscan_result)
 
 
+p<- fviz_cluster(dbscan_result, df_rot, geom = "point", pointsize = 2)
+print(p)
 
-
-
-
-```
-
-
-
-```{r, fig.height=9, fig.width=11, warning=T, message=FALSE}
-#  fig.height=9, fig.width=11
-#3.5, 5.5
-#fig.height=14, fig.width=14
-#9, fig.width=10
-
+}
 
 determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
   
@@ -2040,7 +1964,7 @@ determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
   feature_rank <- feature_rank[order(-feature_rank$Importance), ]  # Sort descending
   
   # Define the feature count grid (1 to 29 features)
-  feature_counts <- seq(1, min(29, ncol(df_train)))  # Ensure max is within range
+  feature_counts <- seq(1, min(25, ncol(df_train)))  # Ensure max is within range
   results <- data.frame(N_Features = integer(), Mean_Accuracy = numeric())
   
   # Train models with increasing numbers of features
@@ -2050,12 +1974,12 @@ determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
     x_selected <- df_train[, selected_features, drop = FALSE]  # Keep as dataframe
     
     # Cross-validation setup
-    fit_control <- trainControl(method = "LOOCV", number = 10, verboseIter = 500, classProbs = TRUE)  # 10-fold CV
+    fit_control <- trainControl(method = "LOOCV", number = 10, verboseIter = 300, classProbs = TRUE)  # 10-fold CV
     # Train model using only selected features
     model_cv <- train(x_selected, as.factor(make.names((df[[test_effect]]))), method = catboost.caret,
-                      tuneGrid = data.frame(depth = 6, learning_rate = 0.1, iterations = 1000,
+                      tuneGrid = data.frame(depth = 6, learning_rate = 0.1, iterations = 250,
                                             l2_leaf_reg = 1e-3, rsm = 0.95, border_count = 64),
-                      trControl = fit_control, verbose=500)
+                      trControl = fit_control, verbose=300)
     
     # Store mean accuracy across CV folds
     mean_acc <- mean(model_cv$results$Accuracy)
@@ -2096,6 +2020,19 @@ determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
   ) + theme(legend.title = element_text(angle = 90))
   print(p)
 }
+
+
+
+```
+
+
+
+```{r, fig.height=9, fig.width=11, warning=F, message=FALSE}
+#  fig.height=9, fig.width=11
+#3.5, 5.5
+#fig.height=14, fig.width=14
+#9, fig.width=10
+#fig.height=10, fig.width=9
 
 plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked, corr_networks=F){
   
@@ -2160,32 +2097,20 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
     
     all_required_colors <- all_required_colors + length(corr_network_levels)-1
     
-    print(length(corr_network_levels))
-    
-    print(all_required_colors)
-    
-    
     extended_palette <- if (all_required_colors > 9) colorRampPalette(brewer.pal(9, "Set1"))(all_required_colors) else brewer.pal(9, "Set1")
-    print(extended_palette)
+
     
     # reset the palettes
     dbscan_colors <- "grey"
     
     dbscan_palette <- c(dbscan_colors, extended_palette[1:(length(dbscan_levels)-1)])
     
-    print(dbscan_palette)
     ann_colors$DBSCAN <- setNames(dbscan_palette, dbscan_levels)
     
     ann_colors$DBSCAN <- ann_colors$DBSCAN[!is.na(names(ann_colors$DBSCAN))]
     
-    print((all_required_colors - (length(corr_network_levels) - 1)))
-    
-    print((length(dbscan_levels)):(length(dbscan_levels)+length(hca_levels)-1))
     
     hca_palette <- extended_palette[(length(dbscan_levels)):(length(dbscan_levels)+length(hca_levels)-1)]
-    
-    print(hca_palette)
-
     
     # Use the same palette for HCA Cutree
     
@@ -2193,25 +2118,32 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
     ann_colors$HCA.Cutree <- ann_colors$HCA.Cutree[!is.na(names(ann_colors$HCA.Cutree))]
     
     cor_colors <- "grey"
-    print((length(dbscan_levels)+length(hca_levels)-1))
-    
-    print((length(dbscan_levels)+length(hca_levels)):all_required_colors)
-    
+
     corr_network_palette <- c(cor_colors, extended_palette[(length(dbscan_levels)+length(hca_levels)):all_required_colors])
     
     
-    print(corr_network_palette)
     ann_colors$Corr.Network <- setNames(corr_network_palette, corr_network_levels)
     ann_colors$Corr.Network <- ann_colors$Corr.Network[!is.na(names(ann_colors$Corr.Network))]
     
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    
+    rownames(cor_matrix) <- gsub("([a-z])([A-Z])", "\\1 \\2", rownames(cor_matrix), perl = TRUE)
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "Gray Level Emphasis", "GLE")
+    
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), " brain", "")
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "forebrain anteroventral region", "anteroventral forebrain")
+    
+    colnames(cor_matrix) <- rownames(cor_matrix)
+    
     row_annotation <- data.frame(
       DBSCAN = factor(clusters$dbs_clus),
       HCA.Cutree = factor(clusters$sil_clus),
       Corr.Network = factor(clusters$corr_networks))
     
-    
+     annotation_legend_list = list(DBSCAN = list(title = "DBSCAN", at = dbscan_levels, ncol = 1), 
+                                 HCA.Cutree = list(title = "HCA Cutree", at = hca_levels, ncol = 1),
+                                 Corr.Network = list(title = "Correlated Networks", at =corr_network_levels, 
+                                       ncol = round(sqrt(length(corr_network_levels)))))
     
     
   }
@@ -2225,12 +2157,18 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
       DBSCAN = factor(clusters$dbs_clus),
       HCA.Cutree = factor(clusters$sil_clus))
     
+    annotation_legend_list = list(Legend(title = "DBSCAN", at = dbscan_levels, ncol = 1), 
+                                Legend(title = "HCA Cutree", at = hca_levels, ncol = 1))
+    
   } else if (!shape_plot){
     
     shape_corr_as_anno <- ifelse(rownames(cor_matrix) %in% correlated_shape_feats, "Yes", "No")
     
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
+    rownames(cor_matrix) <- gsub("([a-z])([A-Z])", "\\1 \\2", rownames(cor_matrix), perl = TRUE)
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "Gray Level Emphasis", "GLE")
+    
+  
     
     ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
     
@@ -2243,6 +2181,11 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
       DBSCAN = factor(clusters$dbs_clus),
       HCA.Cutree = factor(clusters$sil_clus))
     
+      annotation_legend_list = list(Legend(title = "Correlated With Volume", ncol = 1),
+                                    Legend(title = "Correlated With Shape", ncol = 1),
+                                    Legend(title = "DBSCAN", ncol = 1), 
+                                Legend(title = "HCA Cutree", ncol = 1))
+    
     ann_colors$Correlated.With.Shape <- c("Yes" = "blue", "No" = "gray")
     ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
     # Generate consistent colors using palettes for DBSCAN and HCA Cutree
@@ -2251,14 +2194,18 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
     
     # simplify names for shape features
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "original", "")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "original", "")
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "shape", "")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "shape", "")
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "_", " ")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "_", " ")
     rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "  ", "")
-    colnames(cor_matrix) <- str_replace_all(colnames(cor_matrix), "  ", "")
+
     
+    rownames(cor_matrix) <- gsub("([a-z])([A-Z])", "\\1 \\2", rownames(cor_matrix), perl = TRUE)
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "Gray Level Emphasis", "GLE")
+    rownames(cor_matrix) <- str_replace_all(rownames(cor_matrix), "ventricle", "ventricles")
+    
+    
+    
+    colnames(cor_matrix) <- rownames(cor_matrix)
     
     ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
     
@@ -2270,6 +2217,10 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
     DBSCAN = factor(clusters$dbs_clus),
     HCA.Cutree = factor(clusters$sil_clus))
     
+    annotation_legend_list = list(Legend(title = "Correlated With Volume",ncol = 1),
+                                  Legend(title = "DBSCAN", ncol = 1), 
+                                Legend(title = "HCA Cutree", ncol = 1))
+    
   }
   
   rownames(row_annotation) <- rownames(cor_matrix)
@@ -2279,7 +2230,10 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   # Create row annotation object
   ha <- rowAnnotation(
     df = row_annotation,
-    col = ann_colors)
+    col = ann_colors, annotation_legend_param=annotation_legend_list)
+  
+  
+  
   
   cell_fun = function(j, i, x, y, width, height, fill) {
     grid.text(round(1 - abs(cor_matrix[i, j]), 2), x, y, gp = gpar(fontsize = 8, col = "black"))
@@ -2337,9 +2291,9 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   }
   
   #grid.text("Spearman's Coefficient", x = 0.9, y = 0.85, gp = gpar(fontsize = 12, fontface = "bold"))
+                                
   
-  
-  draw(p, heatmap_legend_side = "bottom", padding = unit(c(4, 0.5, 0.5, 7), "cm"))
+  draw(p, heatmap_legend_side = "bottom", padding = unit(c(1, 0.25, 0.25, 4.5), "cm"))
 }
 
 
@@ -2366,7 +2320,7 @@ check_cor <- function(df, cols, shape_plot){
   
   library(caret)
   
-  
+
   df <- df %>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
 
   
@@ -2375,14 +2329,14 @@ check_cor <- function(df, cols, shape_plot){
   
   correlated_vol_feats <- determine_cor_to_ex("Volume_", df)
   
-  print("correlated vol feats")
-  print(correlated_vol_feats)
+  #print("correlated vol feats")
+  #print(correlated_vol_feats)
   
   
   correlated_shape_feats <- determine_cor_to_ex("shape", df)
   
-  print("correlated shape feats")
-  print(correlated_shape_feats)
+  #print("correlated shape feats")
+  #print(correlated_shape_feats)
   
   
   if (ncol(df) < 3) {
@@ -2413,9 +2367,6 @@ check_cor <- function(df, cols, shape_plot){
   
   high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
   
-  print("high corr")
-  
-  print(colnames(df[, high_corr]))
   
   filtered_df <- df[, -high_corr, drop=F]
   
@@ -2550,7 +2501,7 @@ determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_thres
 }
 
 
-get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
+get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tvals=list()) {
   
   colnames(rad_df) <- str_remove(colnames(rad_df), "wavelet_")
   
@@ -2609,7 +2560,25 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
     
     all_reduced_df <- bind_cols(corr_rem_by_org)
     
-    all_reduced_df <- rad_df[colnames(rad_df) %in% c(colnames(all_reduced_df), "Genotype", "Background", "HPE", "WEV", "vol")]
+    if (length(tvals)>0){
+      names(tvals) <- str_remove(names(tvals), "wavelet_")
+     
+      names(non_sign_feats) <-str_remove(names(non_sign_feats), "wavelet_")
+      #correct_tvals <- tvals[names(tvals) %in% colnames(all_reduced_df)]
+      
+      
+  
+      plot_fully_pene_feats(tvals, all_reduced_df)
+    }
+    
+    if (ncol(all_reduced_df)>10){
+      all_reduced_df <- rad_df[colnames(rad_df) %in% c(colnames(all_reduced_df), "Genotype", "Background", "HPE", "WEV", "vol")]
+    } else{
+      all_reduced_df <- rad_df[colnames(rad_df) %in% c(diffs$all_cols, "Genotype", "Background", "HPE", "WEV", "vol")]
+      #print("ddsaf")
+      #print(all_reduced_df)
+    }
+    
     
     df_for_corr <- all_reduced_df%>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
     
@@ -2623,76 +2592,157 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect) {
   
     print("correlated vol feats - inter-organ")
     
-    print(correlated_vol_feats)
-    print(optimal_clusters$dbs_clus)
+    #print(correlated_vol_feats)
+    
     
     
     correlated_shape_feats <- determine_cor_groups("shape", df_for_corr, drop_searchstr = F)
     
     print("correlated shape feats - inter-organ")
-    print(correlated_shape_feats)
+    #print(correlated_shape_feats)
     
-    print(optimal_clusters)
+  
     optimal_clusters$corr_networks <- correlated_vol_feats
     
     
     plot_cor(all_reduced_df, cor_matrix, optimal_clusters, correlated_vol_feats, correlated_shape_feats, shape_plot=F, cor_checked=T, corr_networks=T)
     
-    #reduced_df_for_ml <- check_cor(all_reduced_df, colnames(all_reduced_df))
     
     
     if (ncol(all_reduced_df) > 0) {
-      do_PCA(all_reduced_df)
+      #do_PCA(all_reduced_df)
       
       if (ncol(all_reduced_df) < 50) {plot_differences(all_reduced_df, diffs$all_cols)}
       
       write.csv(all_reduced_df, paste(test_effect, "_all_output.csv"))
-      determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = T)
+      #determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = (ifelse(ncol(all_reduced_df) > 10, T, F)))
     }
   }
 }
 
 
 
-do_PCA <- function(df){
-  df <- df %>% dplyr::select(where(is.numeric))
+
+
+#get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype")
+
+
+
+
+
+```
+
+
+```{r, fig.height=8, fig.width=11}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df[2,])
+
+
+plot_fully_pene_feats <- function(tvals, signif_feats){
+  print("test")
+  
+  print(str(names(tvals)))
+  print("huh")
+  print(str(names(signif_feats)))
+  #print(intersect(names(tvals), names(signif_feats)))
+  signif_tvals <-tvals[names(tvals) %in% names(signif_feats)]
+  
+  print(str(signif_tvals))
+  
+  cluster_df <- create_cluster_df(signif_tvals)
+  
+  non_sign_feats$Tvals <- tvals
+  
+  cluster_df$Tvals <- signif_tvals
+  print(cluster_df)
   
   
-  pca_result <- prcomp(df, center = TRUE, scale. = TRUE)
-  loadings_pc1 <- abs(pca_result$rotation[, 1])  # Take absolute values
-  top_features <- sort(loadings_pc1, decreasing = TRUE)  # Sort by contribution
-print(barplot(sort(abs(pca_result$rotation[,1]), decreasing = TRUE), las = 2, main = "PC1 Loadings"))
-
-df_rot <-t(df)
-
-dbscan_result <- dbscan(df_rot,  eps = 0.3, minPts = 5)
-
-print(dbscan_result)
-
-
-p<- fviz_cluster(dbscan_result, df_rot, geom = "point", pointsize = 2)
-print(p)
-
+  pos_or_neg <- ifelse(signif_tvals < 0, "Negative", "Positive")
+  
+  cluster_df$Correlation <- pos_or_neg
+  
+  split_by_corr <- split(cluster_df, cluster_df$Correlation)
+  
+   # Check if split_by_corr$Positive is empty
+  is_positive_empty <- is.null(split_by_corr$Positive) || nrow(split_by_corr$Positive) == 0
+  
+  # Check if split_by_corr$Negative is NULL or empty
+  is_negative_empty <- is.null(split_by_corr$Negative) || nrow(split_by_corr$Negative) == 0
+  
+  
+  if (nrow(cluster_df)>0){
+    black_dots <- anti_join(non_sign_feats, cluster_df)
+    plot <- ggplot(mapping=aes(x = Type, y = Tvals, col=Correlation)) +
+      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+      labs(x = "Feature Type", 
+           y = expression("t-statistic"), color = "Association of Feature") +
+      theme_minimal()+
+      #geom_point(data = black_dots, width = 0.5, position = position_dodge(width = 0.75), col="black")+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+     if (!is_negative_empty){
+      plot <- plot + 
+      geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+ 
+      stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col="blue", vjust = 2)
+    }
+    if (!is_positive_empty){ 
+      plot <- plot+
+      geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75))+
+      stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col="red", vjust = -1)
+    }
+    
+    
+    plot <- plot +
+      facet_wrap(~Org, scales = "fixed", ncol = 5)+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
+      #scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8)) +
+      #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2), NA, FALSE)) +
+      #scale_color_manual(values = c("blue", "red"))+
+      scale_color_manual(values = c("Negative"="blue", "Positive"="red"))
+    
+    if (!is_positive_empty & !is_negative_empty){
+      plot <- plot + scale_y_continuous(limits=c(min(split_by_corr$Negative$Tvals)-3,max(split_by_corr$Positive$Tvals)+3))+
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+    } else if (!is_negative_empty){ 
+      plot <- plot + scale_y_continuous(limits=c(-8,8))+
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+      }
+    
+  } else {
+      print("wrong IF")
+      n_fun_zero_pos <- function(x){return(data.frame(y = max(x), label = 0))}
+      n_fun_zero_neg <- function(x){return(data.frame(y = min(x), label = 0))}
+      plot <- ggplot(data=non_sign_feats, mapping=aes(x = Type, y = Tvals)) +
+      #geom_point(data=all_df, width = 0.5, position = position_dodge(width = 0.75), alpha=0.5)+
+      #geom_point(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+      labs(x = "Feature Type", 
+           y = expression("t-statistic")) +
+      theme_minimal()+
+      geom_point(data = non_sign_feats, width = 0.5, position = position_dodge(width = 0.75), col="black") +
+      #stat_summary(data = non_sign_feats, fun.data = n_fun_zero_pos, geom = "text", col="black", vjust = 2)+
+      #stat_summary(data = split_by_corr$Positive, fun.data = n_fun_zero_neg, geom = "text", col="black", vjust = -1)+
+      facet_wrap(~Org, scales = "fixed", ncol = 5)+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none") +
+      scale_y_continuous(limits=c(min(non_sign_feats$Tvals)-3,max(non_sign_feats$Tvals)+3))
+      }
+  
+  #geom_segment(aes(x = "Org1_TypeB", xend = "Org2_TypeA", y = -Inf, yend = Inf), linetype = "dashed") 
+  #scale_color_manual(values = type_colors)
+  #facet_zoom(ylim = c(0, 2), zoom.data = ifelse((VolMean <= 2)&(Org == 'forebrain anteroventral region'), NA, FALSE))+
+  
+   
+  #geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+
+   
+  
+  print(plot)
 }
 
-
-get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype")
-
-
-
-
+get_and_plots_differences(rad_info, back_fully_pene_feats, "Background", g_by_e_tvals_df[3,])
 
 ```
 
 
-```{r, fig.height=15, fig.width=15}
-
-get_and_plots_differences(rad_info, back_fully_pene_feats, "Background")
-
-```
-
-
-```{r, fig.height=7, fig.width=11}
+```{r, fig.height=9, fig.width=11}
 
 HPE_sign <- rad_info[colnames(rad_info) %in% c(colnames(significant_feats), "Genotype", "Background", "WEV", "vol")]
 
