@@ -40,6 +40,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(combinat)
 library(performance)
 library(cluster)
+library(circlize)
+library(ComplexHeatmap)
 # gets the position to place the number of positive features (above max point)
 n_fun_pos <- function(x){
   return(data.frame(y = max(x), label = paste0(length(x))))
@@ -434,6 +436,10 @@ print(rad_info)
 
 rad_info_v2 <- fix_column_labels(rad_info_v2) %>% select(where(~ !any(is.na(.))))
 
+  
+rad_info_v2 <- rad_info_v2[, !(!(str_detect(colnames(rad_info_v2), "shape")) & 
+                          str_detect(colnames(rad_info_v2), "ventricle|cavity|vesicle"))]
+
 
 #rad_info_v3 <- fix_column_labels(rad_info_v3)
 
@@ -517,7 +523,7 @@ int_fully_pene_feats <- g_by_e_qvals[5, ][is.numeric(g_by_e_qvals[5, ]) & !is.na
 
 # with 0.05 cut-off
 
-```{r, fig.width=11, fig.height=5.25}
+```{r, fig.width=12, fig.height=8}
 
 # plot full penetrance stuff:
 
@@ -626,7 +632,6 @@ stats_per_type<- function(tvals, signif_feats){
   
   counts_table[is.na(counts_table)] <- 0
   
-  print(counts_table)
   counts_table <- counts_table %>% mutate(Non_Counts=Total-Freq)
 
   
@@ -638,20 +643,17 @@ stats_per_type<- function(tvals, signif_feats){
     table_summary <- aggregate(cbind(Freq, Non_Counts) ~ Org, data = table, FUN = mean)
     
     contingency_table <- as.matrix(table_summary[, c("Freq", "Non_Counts")])
-    print(contingency_table)
-    print(sum(colSums(contingency_table) > 0))
     
-    if (sum(colSums(contingency_table) > 0) == 2) {
+    if (sum(colSums(contingency_table) > 2) == 2) {
       fisher_test <- fisher.test(contingency_table, simulate.p.value=TRUE)
     return(fisher_test$p.value)
     } else {
       print("something weird")
-        return(NA)}
+        return(1)}
   
     
   })
   
-  print(pvals_per_type)
   
   mean_filt_table <- aggregate(cbind(Freq, Non_Counts) ~ Type*Org, data = counts_table, FUN = mean)
   
@@ -914,7 +916,7 @@ non_sign_feats <- create_cluster_df(g_by_e_tvals_df[1,])
 
 plot_logistic_regression(g_by_e_tvals_df[3,], back_fully_pene_feats)
 
-plot_logistic_regression(g_by_e_tvals_df[2,], geno_fully_pene_feats)
+#plot_logistic_regression(g_by_e_tvals_df[2,], geno_fully_pene_feats)
 
 
 #non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[1,])
@@ -2027,12 +2029,219 @@ determine_feat_imp <- function(df, cols, test_effect, corr_removal=F){
 
 
 
-```{r, fig.height=9, fig.width=11, warning=F, message=FALSE}
+```{r, fig.height=3.5, fig.width=4.5, warning=F, message=FALSE}
 #  fig.height=9, fig.width=11
 #3.5, 5.5
 #fig.height=14, fig.width=14
 #9, fig.width=10
 #fig.height=10, fig.width=9
+
+
+determine_cor_to_ex <- function(searchstr, df, drop_searchstr){
+  #stupid default r function stuff
+  if(missing(drop_searchstr)){drop_searchstr=T}
+  
+  cor_matrix <- cor(df, method = "spearman")
+  
+  features <- grep(searchstr, colnames(df), ignore.case = TRUE, value = TRUE)
+  cor_with <- which(colnames(df) %in% features)
+  correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= 0.9)
+  correlated_features <- colnames(df)[correlated_with_ind]
+  if (drop_searchstr) {correlated_features <-correlated_features[!grepl(searchstr, correlated_features)]}
+  return(correlated_features)
+    }
+
+
+check_cor <- function(df, cols, shape_plot){
+  
+  df <- df[colnames(df) %in% c(cols, "Genotype", "Background", "HPE","WEV", "vol")]
+  
+  df_orig <-df
+  
+  library(caret)
+  
+
+  df <- df %>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
+
+  
+  cor_matrix <- cor(df, method = "spearman")
+
+  
+  correlated_vol_feats <- determine_cor_to_ex("Volume_", df)
+  
+  #print("correlated vol feats")
+  #print(correlated_vol_feats)
+  
+  
+  correlated_shape_feats <- determine_cor_to_ex("shape", df)
+  
+  #print("correlated shape feats")
+  #print(correlated_shape_feats)
+  
+  
+  if (ncol(df) < 3) {
+     df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
+    final_df <- df_orig[colnames(df_orig) %in% c(colnames(df))]
+    
+    return(final_df)
+    
+  }
+  
+  print(correlated_vol_feats)
+  
+  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
+  
+  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=F) 
+  
+  df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
+
+  cor_matrix <- cor_matrix[!colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
+                         !colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
+                         drop = FALSE]
+  
+  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
+  
+  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T) 
+  
+  #drop corr
+  
+  
+  high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
+  
+  
+  filtered_df <- df[, -high_corr, drop=F]
+  
+  if (ncol(filtered_df) < 3){
+  
+    final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
+    
+    return(final_df)
+  }
+  
+  cor_matrix<-cor(filtered_df, method = "spearman", use = "pairwise.complete.obs")
+
+  optimal_clusters_aft <- auto_cluster(filtered_df, cor_matrix)
+  
+  #plot_cor(filtered_df, cor_matrix, optimal_clusters_aft, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T)
+  
+  #corr_matrix after removing potential correlated features
+  
+  
+  
+  final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
+  
+  return(final_df)
+  }
+
+
+determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_threshold = 0.9) {
+  library(ggraph)
+  library(ggrepel)
+  library(widyr)
+  print(df)
+  cor_matrix <- cor(df, method = "spearman")
+  
+  # Identify features matching the search string
+  features <- grep(searchstr, colnames(df), ignore.case = TRUE, value = TRUE)
+  cor_with <- which(colnames(df) %in% features)
+  
+  # Identify highly correlated features
+  correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= cor_threshold)
+  correlated_features <- colnames(df)[correlated_with_ind]
+  
+  if (drop_searchstr) {
+    correlated_features <- correlated_features[!grepl(searchstr, correlated_features)]
+  }
+  
+  if (length(correlated_features) == 0) {
+    return(data.frame(Feature = character(0), Group = integer(0)))
+  }
+  
+  # Extract relevant part of the correlation matrix
+  sub_cor_matrix <- cor_matrix[correlated_features, correlated_features]
+  
+  sub_cor_matrix <- cor_matrix
+  
+  # Find feature pairs that meet the threshold
+  cor_pairs <- which(abs(sub_cor_matrix) >= cor_threshold, arr.ind = TRUE)
+  #cor_pairs <- which(upper.tri(cor_matrix), arr.ind = TRUE)
+  
+  # Create dataframe of feature pairs
+  cor_df <- data.frame(
+    Feature1 = rownames(sub_cor_matrix)[cor_pairs[, 1]],
+    Feature2 = colnames(sub_cor_matrix)[cor_pairs[, 2]]
+  ) |> unique()
+  
+  cor_df$weight <- sub_cor_matrix[cor_pairs]
+  
+  # Remove self-correlations
+  cor_df <- cor_df[cor_df$Feature1 != cor_df$Feature2, ]
+  
+  
+  if (nrow(cor_df) == 0) {
+    return(data.frame(Feature = correlated_features, Group = seq_along(correlated_features))) 
+  }
+  
+
+  
+  #test corr network from: https://www.tidytextmining.com/nasa.html?q=correlation%20ne#networks-of-keywords
+  cor_long <- as.data.frame(as.table(sub_cor_matrix)) %>%
+  dplyr::rename(Feature1 = Var1, Feature2 = Var2, correlation = Freq) %>%
+  dplyr::filter(Feature1 != Feature2) %>% # Remove self-correlations
+  filter(abs(correlation) > 0.9)
+  
+  g <- graph_from_data_frame(cor_long, directed=F)
+  
+  components <- components(g)
+  
+  
+  group_map <- setNames(components$membership, names(components$membership))
+  
+  # Match the row names of cor_mat with df and assign group values
+  group_assignment <- ifelse(rownames(cor_matrix) %in% names(components$membership), group_map[rownames(cor_matrix)], 0)
+  
+  # Convert to a named vector
+  names(group_assignment) <- rownames(cor_matrix)
+  
+  
+  
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "original", "")
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "shape", "")
+  cor_long$Feature1 <- str_replace_all(cor_long$Feature1, "__", "")
+  
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "original", "")
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "shape", "")
+  cor_long$Feature2 <- str_replace_all(cor_long$Feature2, "__", "")
+  
+  
+  g <- graph_from_data_frame(cor_long, directed=F) 
+  
+  E(g)$correlation <- cor_long$correlation
+  p<-ggraph(g, layout = "fr") +
+   geom_edge_link(aes(
+    edge_alpha = abs(E(g)$correlation),  # Use correlation from edge attributes
+    #edge_width = abs(E(g)$correlation),  # Use correlation from edge attributes
+    edge_colour = E(g)$correlation),  # Use correlation for edge color
+    show.legend = TRUE) +
+  geom_node_point(size = 4, alpha = 0.7) +
+  geom_node_text(aes(label = name), repel = TRUE,
+                 box.padding = unit(3, "lines"))+
+  theme_void()+
+    scale_edge_colour_gradient2(
+    low = "blue",  # Negative correlation (blue)
+    mid = "grey",  # Mid-point (neutral correlation)
+    high = "red",  # Positive correlation (red)
+    midpoint = 0   # Midpoint is 0 for neutral correlations
+  )
+  
+  print(p)
+  
+  
+  
+  
+  return(group_assignment)
+}
+
 
 plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked, corr_networks=F){
   
@@ -2063,6 +2272,7 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   dbscan_levels <- levels(factor(clusters$dbs_clus))
   
   hca_levels <- levels(factor(clusters$sil_clus))
+  print(hca_levels)
   
   all_required_colors <- length(dbscan_levels) + length(hca_levels)-1
   
@@ -2090,10 +2300,19 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   
 
   if (corr_networks){
-  
+    
+    if (is.data.frame(clusters$corr_networks)){
+      clusters$corr_networks <-setNames(clusters$corr_networks$Group, clusters$corr_networks$Feature)
+    }
     
     corr_network_levels <- levels(factor(clusters$corr_networks))
-  
+    print("this is corr networks")
+    print(str(clusters$corr_networks))
+    
+
+    print(length(clusters$corr_networks))
+    print(factor(clusters$corr_networks))
+
     
     all_required_colors <- all_required_colors + length(corr_network_levels)-1
     
@@ -2181,13 +2400,14 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
       DBSCAN = factor(clusters$dbs_clus),
       HCA.Cutree = factor(clusters$sil_clus))
     
-      annotation_legend_list = list(Legend(title = "Correlated With Volume", ncol = 1),
-                                    Legend(title = "Correlated With Shape", ncol = 1),
-                                    Legend(title = "DBSCAN", ncol = 1), 
-                                Legend(title = "HCA Cutree", ncol = 1))
+      annotation_legend_list = list(Legend(title = "Correlated With Volume", at =c("Yes","No"), ncol = 1),
+                                    Legend(title = "Correlated With Shape", at =c("Yes","No"), ncol = 1),
+                                    DBSCAN = list(title = "DBSCAN", at = dbscan_levels, ncol = 1), 
+                                HCA.Cutree = list(title = "HCA Cutree", at = hca_levels, ncol = 1))
     
     ann_colors$Correlated.With.Shape <- c("Yes" = "blue", "No" = "gray")
     ann_colors$Correlated.With.Volume = c("Yes" = "cyan", "No" = "gray")
+     
     # Generate consistent colors using palettes for DBSCAN and HCA Cutree
     
   } else {
@@ -2293,110 +2513,16 @@ plot_cor <- function(df, cor_matrix, clusters, correlated_vol_feats, correlated_
   #grid.text("Spearman's Coefficient", x = 0.9, y = 0.85, gp = gpar(fontsize = 12, fontface = "bold"))
                                 
   
-  draw(p, heatmap_legend_side = "bottom", padding = unit(c(1, 0.25, 0.25, 4.5), "cm"))
+  draw(p, heatmap_legend_side = "bottom", padding = unit(c(2, 0.25, 0.25, 4.5), "cm"))
 }
 
-
-determine_cor_to_ex <- function(searchstr, df, drop_searchstr){
-  #stupid default r function stuff
-  if(missing(drop_searchstr)){drop_searchstr=T}
-  
-  cor_matrix <- cor(df, method = "spearman")
-  
-  features <- grep(searchstr, colnames(df), ignore.case = TRUE, value = TRUE)
-  cor_with <- which(colnames(df) %in% features)
-  correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= 0.9)
-  correlated_features <- colnames(df)[correlated_with_ind]
-  if (drop_searchstr) {correlated_features <-correlated_features[!grepl(searchstr, correlated_features)]}
-  return(correlated_features)
-    }
-
-
-check_cor <- function(df, cols, shape_plot){
-  
-  df <- df[colnames(df) %in% c(cols, "Genotype", "Background", "HPE","WEV", "vol")]
-  
-  df_orig <-df
-  
-  library(caret)
-  
-
-  df <- df %>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
-
-  
-  cor_matrix <- cor(df, method = "spearman")
-
-  
-  correlated_vol_feats <- determine_cor_to_ex("Volume_", df)
-  
-  #print("correlated vol feats")
-  #print(correlated_vol_feats)
-  
-  
-  correlated_shape_feats <- determine_cor_to_ex("shape", df)
-  
-  #print("correlated shape feats")
-  #print(correlated_shape_feats)
-  
-  
-  if (ncol(df) < 3) {
-     df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
-    final_df <- df_orig[colnames(df_orig) %in% c(colnames(df))]
-    
-    return(final_df)
-    
-  }
-  
-  
-  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
-  
-  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=F) 
-  
-  df <- df[, !colnames(df) %in% c(correlated_vol_feats, correlated_shape_feats), drop = FALSE]
-
-  cor_matrix <- cor_matrix[!colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
-                         !colnames(cor_matrix) %in% c(correlated_vol_feats, correlated_shape_feats), 
-                         drop = FALSE]
-  
-  optimal_clusters_bef <- auto_cluster(df, cor_matrix)
-  
-  #plot_cor(df, cor_matrix, optimal_clusters_bef, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T) 
-  
-  #drop corr
-  
-  
-  high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
-  
-  
-  filtered_df <- df[, -high_corr, drop=F]
-  
-  if (ncol(filtered_df) < 3){
-  
-    final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
-    
-    return(final_df)
-  }
-  
-  cor_matrix<-cor(filtered_df, method = "spearman", use = "pairwise.complete.obs")
-
-  optimal_clusters_aft <- auto_cluster(filtered_df, cor_matrix)
-  
-  #plot_cor(filtered_df, cor_matrix, optimal_clusters_aft, correlated_vol_feats, correlated_shape_feats, shape_plot, cor_checked=T)
-  
-  #corr_matrix after removing potential correlated features
-  
-  
-  
-  final_df <- df_orig[colnames(df_orig) %in% c(colnames(filtered_df))]
-  
-  return(final_df)
-  }
 
 
 determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_threshold = 0.9) {
   library(ggraph)
   library(ggrepel)
   library(widyr)
+  print(df)
   cor_matrix <- cor(df, method = "spearman")
   
   # Identify features matching the search string
@@ -2405,7 +2531,9 @@ determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_thres
   
   # Identify highly correlated features
   correlated_with_ind <- which(apply(abs(cor_matrix[, cor_with, drop = FALSE]), 1, max) >= cor_threshold)
+  print(correlated_with_ind)
   correlated_features <- colnames(df)[correlated_with_ind]
+  print(correlated_features)
   
   if (drop_searchstr) {
     correlated_features <- correlated_features[!grepl(searchstr, correlated_features)]
@@ -2447,6 +2575,8 @@ determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_thres
   dplyr::rename(Feature1 = Var1, Feature2 = Var2, correlation = Freq) %>%
   dplyr::filter(Feature1 != Feature2) %>% # Remove self-correlations
   filter(abs(correlation) > 0.9)
+  
+  print(cor_long)
   
   g <- graph_from_data_frame(cor_long, directed=F)
   
@@ -2499,6 +2629,8 @@ determine_cor_groups <- function(searchstr, df, drop_searchstr = TRUE, cor_thres
   
   return(group_assignment)
 }
+
+
 
 
 get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tvals=list()) {
@@ -2560,23 +2692,28 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tva
     
     all_reduced_df <- bind_cols(corr_rem_by_org)
     
+    print(all_reduced_df)
+    
     if (length(tvals)>0){
       names(tvals) <- str_remove(names(tvals), "wavelet_")
      
       names(non_sign_feats) <-str_remove(names(non_sign_feats), "wavelet_")
       #correct_tvals <- tvals[names(tvals) %in% colnames(all_reduced_df)]
       
-      
+      #all_reduced_df <- all_reduced_df[, grepl("antero", colnames(all_reduced_df))]
   
       plot_fully_pene_feats(tvals, all_reduced_df)
     }
     
-    if (ncol(all_reduced_df)>10){
+    print(intersect(colnames(all_reduced_df), colnames(rad_df)))
+    
+    if (ncol(all_reduced_df)>5){
       all_reduced_df <- rad_df[colnames(rad_df) %in% c(colnames(all_reduced_df), "Genotype", "Background", "HPE", "WEV", "vol")]
+      print(all_reduced_df)
     } else{
       all_reduced_df <- rad_df[colnames(rad_df) %in% c(diffs$all_cols, "Genotype", "Background", "HPE", "WEV", "vol")]
       #print("ddsaf")
-      #print(all_reduced_df)
+      print(all_reduced_df)
     }
     
     
@@ -2592,7 +2729,7 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tva
   
     print("correlated vol feats - inter-organ")
     
-    #print(correlated_vol_feats)
+    print(correlated_vol_feats)
     
     
     
@@ -2605,27 +2742,31 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tva
     optimal_clusters$corr_networks <- correlated_vol_feats
     
     
+    print(correlated_vol_feats)
+    
     plot_cor(all_reduced_df, cor_matrix, optimal_clusters, correlated_vol_feats, correlated_shape_feats, shape_plot=F, cor_checked=T, corr_networks=T)
     
+    print(all_reduced_df)
     
     
     if (ncol(all_reduced_df) > 0) {
       #do_PCA(all_reduced_df)
       
-      if (ncol(all_reduced_df) < 50) {plot_differences(all_reduced_df, diffs$all_cols)}
+      if (ncol(all_reduced_df) < 70) {plot_differences(all_reduced_df, diffs$all_cols)}
       
       write.csv(all_reduced_df, paste(test_effect, "_all_output.csv"))
       #determine_feat_imp(all_reduced_df, diffs$all_cols, test_effect, corr_removal = (ifelse(ncol(all_reduced_df) > 10, T, F)))
     }
   }
+  return(all_reduced_df)
 }
 
 
 
+geno_prim_diffs <- get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype",  g_by_e_tvals_df[2,])
 
 
-#get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype")
-
+#get_and_plots_differences(rad_info, geno_fully_pene_feats, "Genotype", g_by_e_tvals_df[2,])
 
 
 
@@ -2633,7 +2774,73 @@ get_and_plots_differences <- function(rad_df, fully_pene_feats, test_effect, tva
 ```
 
 
-```{r, fig.height=8, fig.width=11}
+```{r,fig.height=10, fig.width=9}
+
+non_sign_feats <- create_cluster_df(g_by_e_tvals_df_v2[2,])
+
+
+geno_sec_diffs <- get_and_plots_differences(rad_info_v2, geno_fully_pene_feats_v2, "Genotype", g_by_e_tvals_df_v2[2,])
+
+```
+
+```{r, fig.height=11, fig.width=13}
+
+shared_geno <- geno_prim_diffs[intersect(colnames(geno_prim_diffs), colnames(geno_sec_diffs))]
+all_reduced_df <- shared_geno
+
+df_for_corr <- shared_geno %>% dplyr::select(where(is.numeric)) %>% dplyr::select(-WEV)
+    
+    cor_matrix <- cor(df_for_corr, method = "spearman")
+    
+    optimal_clusters <- auto_cluster(df_for_corr, cor_matrix)
+    
+    
+    correlated_vol_feats <- determine_cor_groups("Volume_", df_for_corr, drop_searchstr = F)
+    
+  
+    print("correlated vol feats - inter-organ")
+    
+    print(correlated_vol_feats)
+    
+    
+    
+    correlated_shape_feats <- determine_cor_groups("shape", df_for_corr, drop_searchstr = F)
+    
+    print("correlated shape feats - inter-organ")
+    #print(correlated_shape_feats)
+    
+  
+    optimal_clusters$corr_networks <- correlated_vol_feats
+    
+    correlated_vol_feats <- determine_cor_groups("Volume_", df_for_corr, drop_searchstr = F)
+    
+  
+    print("correlated vol feats - inter-organ")
+    
+    print(correlated_vol_feats)
+    
+    
+    
+    correlated_shape_feats <- determine_cor_groups("shape", df_for_corr, drop_searchstr = F)
+    
+    print("correlated shape feats - inter-organ")
+    #print(correlated_shape_feats)
+    
+  
+    optimal_clusters$corr_networks <- correlated_vol_feats
+    
+    
+    print(correlated_vol_feats)
+    
+    plot_cor(all_reduced_df, cor_matrix, optimal_clusters, correlated_vol_feats, correlated_shape_feats, shape_plot=F, cor_checked=T, corr_networks=T)
+    
+    print(all_reduced_df)
+    
+
+```
+
+
+```{r, fig.height=8, fig.width=12}
 
 non_sign_feats <- create_cluster_df(g_by_e_tvals_df[2,])
 
@@ -2679,7 +2886,7 @@ plot_fully_pene_feats <- function(tvals, signif_feats){
            y = expression("t-statistic"), color = "Association of Feature") +
       theme_minimal()+
       #geom_point(data = black_dots, width = 0.5, position = position_dodge(width = 0.75), col="black")+
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "none")
+      theme(axis.text.x = element_text(size=10, angle = 90, vjust = 0.5, hjust = 1), strip.text=element_text(size=12), legend.position = "none")
      if (!is_negative_empty){
       plot <- plot + 
       geom_point(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75))+ 
@@ -2737,12 +2944,12 @@ plot_fully_pene_feats <- function(tvals, signif_feats){
   print(plot)
 }
 
-get_and_plots_differences(rad_info, back_fully_pene_feats, "Background", g_by_e_tvals_df[3,])
+#get_and_plots_differences(rad_info, back_fully_pene_feats, "Background", g_by_e_tvals_df[3,])
 
 ```
 
 
-```{r, fig.height=9, fig.width=11}
+```{r, fig.height=4, fig.width=4.5}
 
 HPE_sign <- rad_info[colnames(rad_info) %in% c(colnames(significant_feats), "Genotype", "Background", "WEV", "vol")]
 
@@ -2753,12 +2960,179 @@ HPE_significant_feats <- significant_feats %>% select(-vol)
 
 
 
-get_and_plots_differences(HPE_sign, HPE_significant_feats, "HPE")
+
+
+HPE_reduced_df <- get_and_plots_differences(HPE_sign, HPE_significant_feats, "HPE")
+
+HPE_sign_feats_for_plot <- significant_feats
+
+
+colnames(HPE_sign_feats_for_plot) <- str_remove(colnames(HPE_sign_feats_for_plot), "wavelet_")
+
+
+HPE_sign_feats_for_plot <- HPE_sign_feats_for_plot[colnames(HPE_sign_feats_for_plot) %in% c(colnames(HPE_reduced_df), "Genotype", "Background", "WEV", "vol")]
+
+  
+
+  
+
+
+quantify_rad_feats(HPE_reduced_df,  HPE_bros, HPE_sign_feats_for_plot)
+
+```
+
+```{r, }
+
+HPE_sign <- rad_info_v2[colnames(rad_info_v2) %in% c(colnames(significant_feats_c3_ant), "Genotype", "Background", "WEV", "vol")]
+
+
+HPE_sign$HPE <- factor(ifelse(HPE_sign$vol %in% HPE_cohort_3_ant, 1, 0))
+
+HPE_significant_feats <- significant_feats_c3_ant %>% select(-vol)
+
+
+
+
+
+HPE_reduced_df <- get_and_plots_differences(HPE_sign, HPE_significant_feats, "HPE")
+
+HPE_sign_feats_for_plot <- significant_feats
+
+
+colnames(HPE_sign_feats_for_plot) <- str_remove(colnames(HPE_sign_feats_for_plot), "wavelet_")
+
+
+HPE_sign_feats_for_plot <- HPE_sign_feats_for_plot[colnames(HPE_sign_feats_for_plot) %in% c(colnames(HPE_reduced_df), "Genotype", "Background", "WEV", "vol")]
+
+
+
+quantify_rad_feats <- function(dataset, HPE_bros, signif_feats){
+  
+  #signif_feats <- signif_feats[(colnames(signif_feats) %in% c("vol",near_close))]
+  
+  significant_feats_means <- signif_feats %>% filter(vol %in% HPE_bros) %>% select_if(is.numeric) %>% colMeans()
+  
+  signif_feats <- signif_feats %>% dplyr::select(-vol)
+  
+  cluster_df <- create_cluster_df(signif_feats)
+  print(cluster_df)
+  
+  #cluster_df$Type<-factor(cluster_df$Type, levels = c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+  
+  cluster_df$VolMean <- significant_feats_means
+  
+  pos_or_neg <- ifelse(significant_feats_means < 1, "Negative", "Positive")
+  
+  cluster_df$Correlation <- pos_or_neg
+  
+  split_by_corr <- split(cluster_df, cluster_df$Correlation)
+  
+  my_palette <- hcl.colors(7, palette = "Dark3")
+  
+  
+  type_colors <- setNames(my_palette, c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))
+  
+  # Check if split_by_corr$Positive is empty
+  is_positive_empty <- is.null(split_by_corr$Positive) || nrow(split_by_corr$Positive) == 0
+  
+  print(is_positive_empty)
+  # Check if split_by_corr$Negative is NULL or empty
+  is_negative_empty <- is.null(split_by_corr$Negative) || nrow(split_by_corr$Negative) == 0
+  
+  plot <- ggplot(mapping = aes(x = Type, y = log2(VolMean), col = Correlation)) +
+    labs(x = "Feature Type", 
+         y = expression("Log"[2] * "(" * frac("Mean HPE Embryo Measurement", "Mean Non-HPE Embryo Measurement") * ")"), 
+       color = "Association of Feature")+
+    theme_minimal()+
+    scale_x_discrete(limits = c("firstorder","glcm","gldm","glrlm","glszm","ngtdm", "shape"))+
+    scale_color_manual(values = c("Positive" = "red", "Negative" = "blue"))
+  
+  # Add Negative data if it's not empty
+  if (!is_negative_empty) {plot <- plot +
+      geom_boxplot(data = split_by_corr$Negative, width = 0.5, position = position_dodge(width = 0.75)) + 
+      stat_summary(data = split_by_corr$Negative, fun.data = n_fun_neg, geom = "text", col = "blue", vjust = 2)
+  }
+  # Add Positive data if it's not empty
+  if (!is_positive_empty) {plot <- plot +
+    geom_boxplot(data = split_by_corr$Positive, width = 0.5, position = position_dodge(width = 0.75)) +
+    stat_summary(data = split_by_corr$Positive, fun.data = n_fun_pos, geom = "text", col = "red", vjust = -1)
+  }
+  
+  # panel wrap if needed 
+  if (length(unique(cluster_df$Org))>4){plot <- plot +
+    facet_wrap(~Org, scales = "fixed", nrow = 1, labeller = as_labeller(label_wrap_custom))+
+    scale_y_continuous(limits = c(-3, 3), breaks = seq(-3, 3, by = 1))+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.975, 0.075), 
+          legend.justification = c(0.975, 0.075),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))
+    
+  } else if (length(unique(cluster_df$Org))>1){plot <- plot +
+    facet_wrap(~Org, scales = "fixed", nrow = 1)+
+    scale_y_continuous(limits = c(-3, 3.35), breaks = seq(-3, 3, by = 1))+
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.975, 0.075), 
+          legend.justification = c(0.975, 0.075),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))}
+  else{plot <- plot + 
+    scale_y_continuous(limits = c(-2.25, 2.25), breaks = seq(-2, 2, by = 1))+
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+          legend.position = c(0.075, 0.975), 
+          legend.justification = c(0.075, 0.975),
+          #legend.position = "right",
+          legend.title = element_text(size = 10),
+          strip.text = element_text(face = "bold", size = 10),
+          legend.background = element_rect(color = alpha("black", 0.5), 
+                                           fill = alpha("white", 0.5)))}
+  
+    
+  
+  print(plot)
+
+}
+
+
+quantify_rad_feats(HPE_reduced_df,  HPE_cohort_3_ant, HPE_sign_feats_for_plot)
+
+
+
+```
+
+```{r, fig.height=4, fig.width=9}
+
+HPE_sign <- rad_info[colnames(rad_info) %in% c(colnames(significant_feats_sev), "Genotype", "Background", "WEV", "vol")]
+
+
+HPE_sign$HPE <- factor(ifelse(HPE_sign$vol %in% sev_HPE_bros, 1, 0))
+
+HPE_significant_feats <- significant_feats_sev %>% select(-vol)
+
+
+HPE_reduced_df <- get_and_plots_differences(HPE_sign, HPE_significant_feats, "HPE")
+
+HPE_sign_feats_for_plot <- significant_feats_sev
+
+
+colnames(HPE_sign_feats_for_plot) <- str_remove(colnames(HPE_sign_feats_for_plot), "wavelet_")
+
+  
+HPE_sign_feats_for_plot <- HPE_sign_feats_for_plot[colnames(HPE_sign_feats_for_plot) %in% c(colnames(HPE_reduced_df), "Genotype", "Background", "WEV", "vol")]
+
+quantify_rad_feats(HPE_reduced_df,  HPE_bros, HPE_sign_feats_for_plot)
 
 ```
 
 
-```{r}
+
+```{r fig.height=3.5, fig.width=6.5}
 #int_shape_diffs_v2 <- get_non_vol_shape_diffs(int_fully_pene_feats_v2)
 #int_shape_diffs_v2
 
@@ -2807,7 +3181,7 @@ plot_volumes_only <-  function(rad_df){
     guides(color = guide_legend(ncol = 2))+
     ggtitle(gsub("_", " ", names(filtered_dataset[,2:(length(names(filtered_dataset))-3)])[data]))+
     theme(plot.subtitle=element_text(size=10, hjust=0.5),
-          strip.text.x = element_text(hjust = 0.5, size = 10), legend.position = "right",
+          strip.text.x = element_text(hjust = 0.5, size = 10), legend.position = "none",
           title = element_text(size=10, hjust=0.5),
           axis.title.x = element_text(size=12), 
           axis.title.y = element_text(size=12))
@@ -2819,7 +3193,7 @@ plot_volumes_only <-  function(rad_df){
 }
 
 
-plot_shape_differences(rad_info, geno_shape_diffs_v1$cols)
+#plot_shape_differences(rad_info, geno_shape_diffs_v1$cols)
 
 plot_volumes_only(rad_info)
 
